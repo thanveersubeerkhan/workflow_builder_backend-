@@ -1,5 +1,5 @@
 import { Worker } from 'bullmq';
-import { redisConnection, flowQueue, triggerQueue } from './queues.js';
+import { createWorkerConnection, flowQueue, triggerQueue } from './queues.js';
 import { pool } from './db.js';
 import { runTrigger } from './engine.js';
 
@@ -8,14 +8,32 @@ import { runTrigger } from './engine.js';
  * Scans all flows for triggers and starts flows if new data is detected.
  */
 export const triggerWorker = new Worker('trigger-polling', async (job) => {
-  console.log('--- Scanning for Automated Triggers ---');
+  const { flowId } = job.data as { flowId?: string };
+  
+  if (flowId) {
+    console.log(`--- Scanning Specific Flow: ${flowId} ---`);
+  } else {
+    console.log('--- Scanning for Automated Triggers ---');
+  }
 
   try {
-    const flowsRes = await pool.query("SELECT * FROM flows WHERE is_active = true");
-    const flows = flowsRes.rows;
+    let flows: any[] = [];
+    
+    if (flowId) {
+      const res = await pool.query("SELECT * FROM flows WHERE id = $1 AND is_active = true", [flowId]);
+      flows = res.rows;
+    } else {
+      const res = await pool.query("SELECT * FROM flows WHERE is_active = true");
+      flows = res.rows;
+    }
 
     if (flows.length === 0) {
-      console.log('--- No active flows found to scan ---');
+      if (flowId) {
+        console.log(`--- Flow ${flowId} not found or not active ---`);
+      } else {
+        console.log('--- No active flows found to scan ---');
+      }
+      return;
     }
 
     for (const flow of flows) {
@@ -61,7 +79,7 @@ export const triggerWorker = new Worker('trigger-polling', async (job) => {
   }
   
   console.log('--- Trigger Scan Completed ---');
-}, { connection: redisConnection });
+}, { connection: createWorkerConnection() });
 
 // Schedule polling every 30 seconds for responsive triggers
 export async function scheduleTriggerJob() {

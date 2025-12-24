@@ -6,7 +6,7 @@ import { tokenRouter } from './tokens.js';
 import { disconnectRouter } from './disconnect.js';
 import { pool } from './db.js';
 import { runAction } from './engine.js';
-import { flowQueue } from './queues.js';
+import { flowQueue, triggerQueue, closeRedisConnections } from './queues.js';
 import { mapUIToDefinition } from './flow-mapper.js';
 import './worker.js';
 import { scheduleRefreshJob } from './refresh-worker.js';
@@ -181,7 +181,14 @@ app.patch('/api/flows/:flowId', async (req: express.Request, res: express.Respon
     const result = await pool.query(query, values);
     if (result.rowCount === 0) return res.status(404).json({ error: 'Flow not found' });
 
-    res.json({ success: true, flow: result.rows[0] });
+    const updatedFlow = result.rows[0];
+    res.json({ success: true, flow: updatedFlow });
+
+    // If flow was activated, trigger an immediate scan
+    if (is_active === true || is_active === 'true') {
+      console.log(`[Flow] Flow ${flowId} activated. Triggering immediate scan...`);
+      await triggerQueue.add(`immediate-scan-${flowId}-${Date.now()}`, { flowId });
+    }
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -250,3 +257,25 @@ Disconnect: DELETE /api/disconnect/:userId/:service
   await scheduleRefreshJob();
   await scheduleTriggerJob();
 });
+
+// Graceful Shutdown
+const shutdown = async (signal: string) => {
+  console.log(`\n[Server] ${signal} received. Starting graceful shutdown...`);
+  
+  try {
+    // 1. Disconnect Redis
+    await closeRedisConnections();
+    
+    // 2. Close Database Pool
+    await pool.end();
+    
+    console.log('[Server] Graceful shutdown complete. Bye!');
+    process.exit(0);
+  } catch (err) {
+    console.error('[Server] Error during shutdown:', err);
+    process.exit(1);
+  }
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

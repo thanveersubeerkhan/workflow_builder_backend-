@@ -1,5 +1,5 @@
 import { Worker } from 'bullmq';
-import { redisConnection, refreshQueue } from './queues.js';
+import { createWorkerConnection, refreshQueue } from './queues.js';
 import { getAllIntegrations, saveIntegration } from './db.js';
 import { createOAuthClient } from './google.js';
 
@@ -46,7 +46,7 @@ export const refreshWorker = new Worker('token-refresh', async (job) => {
   }
   
   console.log('--- Proactive Refresh Job Completed ---');
-}, { connection: redisConnection });
+}, { connection: createWorkerConnection() });
 
 // Schedule the repeatable job if it doesn't exist
 export async function scheduleRefreshJob() {

@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from './queues.js';
+import { createWorkerConnection, flowQueue } from './queues.js';
 import { runAction } from './engine.js';
 import { resolveVariables } from './mapping-engine.js';
 import { pool } from './db.js';
@@ -77,7 +77,7 @@ export const flowWorker = new Worker<FlowJobData>('flow-execution', async (job: 
     );
     throw error;
   }
-}, { connection: redisConnection });
+}, { connection: createWorkerConnection() });
 
 flowWorker.on('completed', job => {
   console.log(`Job ${job.id} completed!`);
