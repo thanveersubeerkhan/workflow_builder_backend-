@@ -1,0 +1,48 @@
+{
+  "name": "workflow_backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "db:setup": "tsx src/setup-db.ts",
+    "test:full": "tsx src/master-test.ts",
+    "test:email": "tsx src/tests/test-email.ts",
+    "test:trigger": "tsx src/tests/test-trigger.ts",
+    "test:auto": "tsx src/tests/test-automated-trigger.ts",
+    "test:spiced": "tsx src/tests/test-spiced-flow.ts",
+    "test:pieces": "tsx src/tests/test-all-pieces.ts",
+    "test:schedule": "tsx src/tests/test-schedule-trigger.ts",
+    "test:schedule-sheets": "tsx src/tests/test-schedule-to-sheets.ts",
+    "test:mgmt": "tsx src/tests/test-management-api.ts",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "redis:up": "docker run -d --name workflow_redis -p 6379:6379 redis:7",
+    "redis:down": "docker stop workflow_redis && docker rm workflow_redis"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@types/jsonwebtoken": "^9.0.10",
+    "axios": "^1.13.2",
+    "bullmq": "^5.66.2",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "googleapis": "^169.0.0",
+    "ioredis": "^5.8.2",
+    "jsonwebtoken": "^9.0.3",
+    "node-cron": "^4.2.1",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.0.3",
+    "@types/node-cron": "^3.0.11",
+    "@types/pg": "^8.16.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
