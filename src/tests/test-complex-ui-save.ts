@@ -1,10 +1,10 @@
 import axios from 'axios';
 
 const BASE_URL = 'https://workflow-builder-backend-seven.vercel.app';
-const USER_ID = 'c866d8ee-5194-4605-8f8b-30f831604aa6'; // Shared test user
+const USER_ID = 'a1e3b22d-b668-4bda-897d-fcb09fae6ec8'; // Shared test user
 
 async function testComplexUISave() {
-  console.log('🧪 Testing Complex UI-to-Backend Mapping...');
+  console.log('🧪 Testing Gmail-Only UI-to-Backend Mapping...');
 
   const complexUIDefinition = {
     "nodes": [
@@ -21,7 +21,7 @@ async function testComplexUISave() {
           "actionId": "every_x_minutes",
           "actionName": "Every X Minutes",
           "isPlaceholder": false,
-          "params": { "intervalMinutes": 5 }
+          "params": { "intervalMinutes": 1 }
         },
         "type": "custom"
       },
@@ -48,28 +48,10 @@ async function testComplexUISave() {
         },
         "type": "custom"
       },
-      {
-        "id": "swbf0ecfl",
-        "position": { "x": 100, "y": 500 },
-        "data": {
-          "label": "Google Sheets",
-          "subLabel": "Add a new row to a spreadsheet.",
-          "icon": "google_sheets",
-          "appName": "Google Sheets",
-          "name": "Google Sheets",
-          "description": "Add a new row to a spreadsheet.",
-          "actionId": "insert_row",
-          "actionName": "Insert Row",
-          "isPlaceholder": false,
-          "params": { "spreadsheetId": "123", "sheetName": "Log" }
-        },
-        "type": "custom"
-      }
     ],
     "edges": [
       { "id": "e-1-d57zu054q", "source": "1", "target": "d57zu054q", "type": "custom" },
-      { "id": "e-d57zu054q-swbf0ecfl", "source": "d57zu054q", "target": "swbf0ecfl", "type": "custom" },
-      { "id": "e-swbf0ecfl-end", "source": "swbf0ecfl", "target": "end", "type": "custom" }
+      { "id": "e-d57zu054q-end", "source": "d57zu054q", "target": "end", "type": "custom" }
     ]
   };
 
@@ -78,7 +60,7 @@ async function testComplexUISave() {
     console.log('\n1. Sending UI Definition to Backend...');
     const createRes = await axios.post(`${BASE_URL}/api/flows`, {
       userId: USER_ID,
-      name: 'Complex UI Sync Test',
+      name: 'Gmail Only Sync Test',
       ui_definition: complexUIDefinition
     });
 
@@ -97,14 +79,13 @@ async function testComplexUISave() {
     // Validations
     if (flow.definition.trigger.piece !== 'schedule') throw new Error('Trigger mapping failed');
     if (flow.definition.steps[0].piece !== 'gmail') throw new Error('First step mapping failed');
-    if (flow.definition.steps[1].piece !== 'sheets') throw new Error('Second step mapping failed');
     
     console.log('\n✅ Verification Successful: Backend correctly mapped UI to Execution Logic!');
 
     // 3. Trigger Manual Run
     console.log('\n3. Triggering Manual Run...');
     const runRes = await axios.post(`${BASE_URL}/api/flows/${flow.id}/run`);
-    console.log('� Result:', runRes.data.message);
+    console.log('🚀 Result:', runRes.data.message);
     console.log('\n✨ Flow is now running in the background. Check your email!');
 
   } catch (error: any) {

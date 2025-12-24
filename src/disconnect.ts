@@ -13,12 +13,19 @@ disconnectRouter.delete('/:userId/:service', async (req, res) => {
       return res.status(404).json({ error: 'Integration not found' });
     }
 
-    // Revoke with Google
-    const client = createOAuthClient();
-    await client.revokeToken(integration.refresh_token);
+    // Revoke with Google (Best effort)
+    try {
+      const client = createOAuthClient();
+      await client.revokeToken(integration.refresh_token);
+      console.log(`[Disconnect] Successfully revoked Google token for ${service}`);
+    } catch (revokeError: any) {
+      console.warn(`[Disconnect] Failed to revoke Google token for ${service} (it might already be invalid):`, revokeError.message);
+      // We continue anyway so the user can at least remove it from our DB
+    }
 
-    // Delete from DB
+    // Delete from DB (Guaranteed)
     await deleteIntegration(userId, service);
+    console.log(`[Disconnect] Deleted ${service} integration from database for user ${userId}`);
 
     res.json({ message: `Successfully disconnected ${service}` });
   } catch (error: any) {
