@@ -37,12 +37,24 @@ async function setup() {
       user_id UUID REFERENCES users(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       definition JSONB NOT NULL,
-      last_trigger_data TEXT, -- Stores last seen Email ID or Row ID
+      ui_definition JSONB DEFAULT '{"nodes": [], "edges": []}',
+      last_trigger_data TEXT,
+      is_active BOOLEAN DEFAULT true,
       created_at TIMESTAMP DEFAULT now(),
       updated_at TIMESTAMP DEFAULT now()
     );
 
-    ALTER TABLE flows ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+    ALTER TABLE flows ADD COLUMN IF NOT EXISTS ui_definition JSONB DEFAULT '{"nodes": [], "edges": []}';
+    ALTER TABLE flows ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+
+    -- Migration from status to is_active if status exists
+    DO $$ 
+    BEGIN 
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flows' AND column_name='status') THEN
+        UPDATE flows SET is_active = (status = 'active');
+        ALTER TABLE flows DROP COLUMN status;
+      END IF;
+    END $$;
 
     CREATE TABLE IF NOT EXISTS flow_runs (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

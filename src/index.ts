@@ -7,6 +7,7 @@ import { disconnectRouter } from './disconnect.js';
 import { pool } from './db.js';
 import { runAction } from './engine.js';
 import { flowQueue } from './queues.js';
+import { mapUIToDefinition } from './flow-mapper.js';
 import './worker.js';
 import { scheduleRefreshJob } from './refresh-worker.js';
 import { scheduleTriggerJob } from './trigger-worker.js';
@@ -70,26 +71,112 @@ app.post('/api/run', async (req: express.Request, res: express.Response) => {
   }
 });
 
-// Create & Queue Flow Endpoint
+// 1. Create Flow
 app.post('/api/flows', async (req: express.Request, res: express.Response) => {
-  const { userId, name, definition } = req.body;
+  const { userId, name, ui_definition } = req.body;
+  
+  // Auto-map UI to Definition
+  const definition = mapUIToDefinition(ui_definition || { nodes: [], edges: [] });
+
   try {
     const result = await pool.query(
-      'INSERT INTO flows (user_id, name, definition) VALUES ($1, $2, $3) RETURNING *',
-      [userId, name, JSON.stringify(definition)]
+      'INSERT INTO flows (user_id, name, definition, ui_definition) VALUES ($1, $2, $3, $4) RETURNING *',
+      [userId, name, JSON.stringify(definition), JSON.stringify(ui_definition || { nodes: [], edges: [] })]
     );
     const flow = result.rows[0];
 
-    // Added to queue for immediate first run
-    await flowQueue.add(`flow-init-${flow.id}`, {
-      flowId: flow.id,
-      userId,
-      definition
-    });
+    // Added to queue for immediate first run if valid and active
+    if (definition.trigger && flow.is_active) {
+      await flowQueue.add(`flow-init-${flow.id}`, {
+        flowId: flow.id,
+        userId,
+        definition
+      });
+    }
 
-    res.json({ success: true, message: 'Flow created and queued', flowId: flow.id });
+    res.json({ success: true, flowId: flow.id, flow });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 2. List User Flows
+app.get('/api/flows', async (req: express.Request, res: express.Response) => {
+  const userId = req.query.userId as string;
+  if (!userId) return res.status(400).json({ error: 'userId is required' });
+
+  try {
+    const result = await pool.query(
+      'SELECT id, name, is_active, created_at, updated_at FROM flows WHERE user_id = $1 ORDER BY created_at DESC',
+      [userId]
+    );
+    res.json({ success: true, flows: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 3. Get Single Flow Detail
+app.get('/api/flows/:flowId', async (req: express.Request, res: express.Response) => {
+  const { flowId } = req.params;
+  try {
+    const result = await pool.query('SELECT * FROM flows WHERE id = $1', [flowId]);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Flow not found' });
+    res.json({ success: true, flow: result.rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 4. Update Flow (Full Support with Auto-Mapping)
+app.patch('/api/flows/:flowId', async (req: express.Request, res: express.Response) => {
+  const { flowId } = req.params;
+  const { name, ui_definition, is_active } = req.body;
+
+  try {
+    const updates = [];
+    const values = [];
+    let paramIdx = 1;
+
+    if (name !== undefined) {
+      updates.push(`name = $${paramIdx++}`);
+      values.push(name);
+    }
+    
+    if (ui_definition !== undefined) {
+      // Auto-map UI to Definition
+      const definition = mapUIToDefinition(ui_definition);
+      
+      updates.push(`ui_definition = $${paramIdx++}`);
+      values.push(JSON.stringify(ui_definition));
+      
+      updates.push(`definition = $${paramIdx++}`);
+      values.push(JSON.stringify(definition));
+    }
+    
+    if (is_active !== undefined) {
+      updates.push(`is_active = $${paramIdx++}`);
+      values.push(is_active === true || is_active === 'true');
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    values.push(flowId);
+    const query = `
+      UPDATE flows 
+      SET ${updates.join(', ')}, updated_at = now() 
+      WHERE id = $${paramIdx} 
+      RETURNING *
+    `;
+
+    const result = await pool.query(query, values);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Flow not found' });
+
+    res.json({ success: true, flow: result.rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -100,27 +187,6 @@ app.delete('/api/flows/:flowId', async (req, res) => {
     const result = await pool.query('DELETE FROM flows WHERE id = $1 RETURNING id', [flowId]);
     if (result.rowCount === 0) return res.status(404).json({ error: 'Flow not found' });
     res.json({ success: true, message: 'Flow deleted' });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Stop/Start Flow (Toggle Status)
-app.patch('/api/flows/:flowId/status', async (req, res) => {
-  const { flowId } = req.params;
-  const { status } = req.body; // 'active' or 'inactive'
-
-  if (!['active', 'inactive'].includes(status)) {
-    return res.status(400).json({ error: 'Invalid status. Use active or inactive.' });
-  }
-
-  try {
-    const result = await pool.query(
-      'UPDATE flows SET status = $1 WHERE id = $2 RETURNING id, status',
-      [status, flowId]
-    );
-    if (result.rowCount === 0) return res.status(404).json({ error: 'Flow not found' });
-    res.json({ success: true, flow: result.rows[0] });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

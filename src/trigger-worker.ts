@@ -11,7 +11,7 @@ export const triggerWorker = new Worker('trigger-polling', async (job) => {
   console.log('--- Scanning for Automated Triggers ---');
 
   try {
-    const flowsRes = await pool.query("SELECT * FROM flows WHERE status = 'active'");
+    const flowsRes = await pool.query("SELECT * FROM flows WHERE is_active = true");
     const flows = flowsRes.rows;
 
     if (flows.length === 0) {
