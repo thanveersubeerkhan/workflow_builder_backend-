@@ -101,9 +101,11 @@ async function testComplexUISave() {
     
     console.log('\n✅ Verification Successful: Backend correctly mapped UI to Execution Logic!');
 
-    
-    await axios.delete(`${BASE_URL}/api/flows/${flow.id}`);
-    console.log('🗑️ Test flow deleted.');
+    // 3. Trigger Manual Run
+    console.log('\n3. Triggering Manual Run...');
+    const runRes = await axios.post(`${BASE_URL}/api/flows/${flow.id}/run`);
+    console.log('� Result:', runRes.data.message);
+    console.log('\n✨ Flow is now running in the background. Check your email!');
 
   } catch (error: any) {
     console.error('❌ Test Failed:', error.response?.data || error.message);

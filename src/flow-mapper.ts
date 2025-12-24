@@ -37,9 +37,10 @@ export function mapUIToDefinition(ui: UIDefinition) {
     return { trigger: null, steps: [] };
   }
 
+  const pieceName = mapPieceName(triggerNode.data?.icon || triggerNode.data?.appName);
   const trigger = {
-    piece: mapPieceName(triggerNode.data?.icon || triggerNode.data?.appName),
-    name: triggerNode.data?.actionId || 'trigger',
+    piece: pieceName,
+    name: mapTriggerName(pieceName, triggerNode.data?.actionId || 'trigger'),
     params: triggerNode.data?.params || {}
   };
 
@@ -57,10 +58,11 @@ export function mapUIToDefinition(ui: UIDefinition) {
     const nextNode = nodes.find(n => n.id === nextEdge.target);
     if (!nextNode || nextNode.type === 'end') break;
 
+    const stepPiece = mapPieceName(nextNode.data?.icon || nextNode.data?.appName);
     steps.push({
       name: `${nextNode.data?.appName || 'Step'}_${nextNode.data?.actionId || 'Action'}`,
-      piece: mapPieceName(nextNode.data?.icon || nextNode.data?.appName),
-      action: nextNode.data?.actionId,
+      piece: stepPiece,
+      action: mapActionName(stepPiece, nextNode.data?.actionId),
       params: nextNode.data?.params || {}
     });
 
@@ -72,6 +74,29 @@ export function mapUIToDefinition(ui: UIDefinition) {
   }
 
   return { trigger, steps };
+}
+
+/**
+ * Maps UI triggers to backend names
+ */
+function mapTriggerName(piece: string, uiActionId: string): string {
+  if (piece === 'schedule' && uiActionId === 'every_x_minutes') return 'schedule';
+  if (piece === 'gmail' && (uiActionId === 'new_email' || uiActionId === 'newEmail')) return 'newEmail';
+  if (piece === 'sheets' && (uiActionId === 'new_row' || uiActionId === 'newRow')) return 'newRow';
+  return uiActionId;
+}
+
+/**
+ * Maps UI actions to backend names
+ */
+function mapActionName(piece: string, uiActionId: string): string {
+  if (piece === 'gmail' && (uiActionId === 'send_email' || uiActionId === 'sendEmail')) return 'sendEmail';
+  if (piece === 'sheets') {
+    if (uiActionId === 'insert_row' || uiActionId === 'append_row' || uiActionId === 'appendRow') return 'appendRowSmart';
+  }
+  
+  // Standard camelCase conversion for others
+  return uiActionId.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
 }
 
 /**

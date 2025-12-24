@@ -128,6 +128,20 @@ app.get('/api/flows/:flowId', async (req: express.Request, res: express.Response
   }
 });
 
+// 3.5 Get Flow Runs (for debugging failures)
+app.get('/api/flows/:flowId/runs', async (req: express.Request, res: express.Response) => {
+  const { flowId } = req.params;
+  try {
+    const result = await pool.query(
+      'SELECT id, flow_id, status, logs, result, created_at FROM flow_runs WHERE flow_id = $1 ORDER BY created_at DESC LIMIT 50',
+      [flowId]
+    );
+    res.json({ success: true, runs: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 4. Update Flow (Full Support with Auto-Mapping)
 app.patch('/api/flows/:flowId', async (req: express.Request, res: express.Response) => {
   const { flowId } = req.params;
