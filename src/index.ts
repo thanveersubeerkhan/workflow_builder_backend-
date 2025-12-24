@@ -80,19 +80,12 @@ app.post('/api/flows', async (req: express.Request, res: express.Response) => {
 
   try {
     const result = await pool.query(
-      'INSERT INTO flows (user_id, name, definition, ui_definition) VALUES ($1, $2, $3, $4) RETURNING *',
-      [userId, name, JSON.stringify(definition), JSON.stringify(ui_definition || { nodes: [], edges: [] })]
+      'INSERT INTO flows (user_id, name, definition, ui_definition, is_active) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [userId, name, JSON.stringify(definition), JSON.stringify(ui_definition || { nodes: [], edges: [] }), false]
     );
     const flow = result.rows[0];
 
-    // Added to queue for immediate first run if valid and active
-    if (definition.trigger && flow.is_active) {
-      await flowQueue.add(`flow-init-${flow.id}`, {
-        flowId: flow.id,
-        userId,
-        definition
-      });
-    }
+    // Note: We no longer auto-queue on create. User must toggle is_active or call /run manually.
 
     res.json({ success: true, flowId: flow.id, flow });
   } catch (error: any) {
