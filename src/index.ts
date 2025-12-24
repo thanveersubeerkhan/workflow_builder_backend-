@@ -27,6 +27,38 @@ app.use('/auth', authRouter);
 app.use('/api/tokens', tokenRouter);
 app.use('/api/disconnect', disconnectRouter);
 
+// Service Information & Status Endpoint
+app.get('/api/services', async (req: express.Request, res: express.Response) => {
+  const userId = req.query.userId as string;
+
+  if (!userId) {
+    return res.status(400).json({ success: false, error: 'userId is required' });
+  }
+
+  try {
+    // 1. Get all service definitions from DB
+    const metadataRes = await pool.query('SELECT * FROM services_metadata');
+    const servicesMetadata = metadataRes.rows;
+
+    // 2. Get connected services for this user
+    const dbRes = await pool.query(
+      'SELECT service FROM google_integrations WHERE user_id = $1',
+      [userId]
+    );
+    const connectedServices = new Set(dbRes.rows.map(row => row.service));
+
+    // 3. Merge metadata with connection status
+    const services = servicesMetadata.map(service => ({
+      ...service,
+      connected: connectedServices.has(service.id)
+    }));
+
+    res.json({ success: true, data: services });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Engine Execution Endpoint (Single Action)
 app.post('/api/run', async (req: express.Request, res: express.Response) => {
   const { userId, service, actionName, params } = req.body;

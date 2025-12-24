@@ -52,16 +52,74 @@ async function setup() {
       result JSONB,
       created_at TIMESTAMP DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS services_metadata (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      icon TEXT,
+      color TEXT,
+      created_at TIMESTAMP DEFAULT now()
+    );
   `;
 
   try {
     await pool.query(schema);
     console.log('✅ Database tables created successfully!');
+    
+    await seedServices();
     process.exit(0);
   } catch (error: any) {
     console.error('❌ Failed to initialize database:', error.message);
     process.exit(1);
   }
+}
+
+async function seedServices() {
+  console.log('--- Seeding Service Metadata ---');
+  const services = [
+    {
+      id: 'gmail',
+      name: 'Gmail',
+      description: 'Send and receive emails, manage drafts and labels.',
+      icon: 'Mail',
+      color: 'text-red-500',
+    },
+    {
+      id: 'sheets',
+      name: 'Google Sheets',
+      description: 'Create, read, and edit spreadsheets dynamically.',
+      icon: 'FileSpreadsheet',
+      color: 'text-green-600',
+    },
+    {
+      id: 'docs',
+      name: 'Google Docs',
+      description: 'Create, read, and edit documents dynamically.',
+      icon: 'FileText',
+      color: 'text-purple-600',
+    },
+    {
+      id: 'drive',
+      name: 'Google Drive',
+      description: 'Upload, download, and manage files in the cloud.',
+      icon: 'HardDrive',
+      color: 'text-blue-500',
+    }
+  ];
+
+  for (const s of services) {
+    await pool.query(
+      `INSERT INTO services_metadata (id, name, description, icon, color)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name,
+         description = EXCLUDED.description,
+         icon = EXCLUDED.icon,
+         color = EXCLUDED.color`,
+      [s.id, s.name, s.description, s.icon, s.color]
+    );
+  }
+  console.log('✅ Service metadata seeded.');
 }
 
 setup();
