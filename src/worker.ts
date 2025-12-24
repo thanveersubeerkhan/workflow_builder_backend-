@@ -26,19 +26,38 @@ export const flowWorker = new Worker<FlowJobData>('flow-execution', async (job: 
 
   try {
     for (const step of definition.steps) {
-      logs.push(`Executing Step: ${step.name} (${step.piece})`);
+      const stepStartTime = Date.now();
+      logs.push(`[${new Date().toISOString()}] Executing Step: ${step.name} (${step.piece}.${step.action})`);
       
-      const resolvedParams = resolveVariables(step.params, context);
+      try {
+        const resolvedParams = resolveVariables(step.params, context);
+        
+        const result = await runAction({
+          userId,
+          service: step.piece,
+          actionName: step.action,
+          params: resolvedParams
+        });
 
-      const result = await runAction({
-        userId,
-        service: step.piece,
-        actionName: step.action,
-        params: resolvedParams
-      });
-
-      context.steps[step.name] = { data: result };
-      logs.push(`Successfully completed ${step.name}`);
+        context.steps[step.name] = { data: result };
+        const duration = Date.now() - stepStartTime;
+        logs.push(`[${new Date().toISOString()}] ✅ Successfully completed ${step.name} in ${duration}ms`);
+      } catch (stepError: any) {
+        const errorDetail = stepError.response?.data 
+          ? JSON.stringify(stepError.response.data) 
+          : stepError.message;
+        
+        const failureLog = `❌ FAILED at Step: "${step.name}". Error: ${errorDetail}`;
+        logs.push(`[${new Date().toISOString()}] ${failureLog}`);
+        
+        await pool.query(
+          'UPDATE flow_runs SET status = $1, logs = $2, result = $3 WHERE id = $4',
+          ['failed', JSON.stringify(logs), JSON.stringify(context.steps), runId]
+        );
+        
+        console.error(`[Worker] Flow ${flowId} failed at step ${step.name}:`, errorDetail);
+        return { success: false, error: failureLog };
+      }
     }
 
     await pool.query(
@@ -49,8 +68,8 @@ export const flowWorker = new Worker<FlowJobData>('flow-execution', async (job: 
     return { success: true, runId };
 
   } catch (error: any) {
-    console.error(`[Worker] Error in flow ${flowId}:`, error.message);
-    logs.push(`ERROR in step: ${error.message}`);
+    console.error(`[Worker] Critical failure in flow ${flowId}:`, error.message);
+    logs.push(`[${new Date().toISOString()}] CRITICAL ERROR: ${error.message}`);
     
     await pool.query(
       'UPDATE flow_runs SET status = $1, logs = $2 WHERE id = $3',

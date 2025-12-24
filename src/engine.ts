@@ -23,17 +23,20 @@ interface RunActionArgs {
 }
 
 export async function runAction({ userId, service, actionName, params }: RunActionArgs) {
+  console.log(`[Engine] Running Action: ${service}.${actionName} for User: ${userId}`);
+  
   const piece = pieces[service];
-  if (!piece) throw new Error(`Service ${service} not found`);
+  if (!piece) throw new Error(`Service Piece "${service}" not found in engine pieces registrar.`);
 
   const action = piece.actions[actionName];
-  if (!action) throw new Error(`Action ${actionName} not found in ${service}`);
+  if (!action) throw new Error(`Action "${actionName}" not found in piece "${service}". Available actions: ${Object.keys(piece.actions).join(', ')}`);
 
-  // 1. Get Integration (Optional for some pieces)
+  // 1. Get Integration
   const integration = await getIntegration(userId, service);
   
   let auth = null;
   if (integration) {
+    console.log(`[Engine] Found integration for ${service}. Preparing OAuth client...`);
     // 2. Prepare Auth
     const client = createOAuthClient();
     client.setCredentials({
@@ -45,26 +48,42 @@ export async function runAction({ userId, service, actionName, params }: RunActi
     // 3. Refresh token if needed
     const now = Date.now();
     if (integration.expiry_date && (integration.expiry_date < now + 5 * 60 * 1000)) {
-      console.log(`[Engine] Auto-refreshing token for ${service} - ${userId}`);
-      const { credentials } = await client.refreshAccessToken();
-      
-      // Save to DB
-      await saveIntegration({
-        user_id: userId,
-        service,
-        refresh_token: integration.refresh_token,
-        access_token: credentials.access_token ?? undefined,
-        expiry_date: credentials.expiry_date ?? undefined,
-        scopes: integration.scopes
-      });
-      
-      client.setCredentials(credentials);
+      try {
+        console.log(`[Engine] Token expired or expiring soon for ${service}. Refreshing...`);
+        const { credentials } = await client.refreshAccessToken();
+        
+        await saveIntegration({
+          user_id: userId,
+          service,
+          refresh_token: integration.refresh_token,
+          access_token: credentials.access_token ?? undefined,
+          expiry_date: credentials.expiry_date ?? undefined,
+          scopes: integration.scopes
+        });
+        
+        client.setCredentials(credentials);
+        console.log(`[Engine] Successfully refreshed and saved token for ${service}`);
+      } catch (refreshError: any) {
+        const errorMsg = `Failed to refresh Google token for ${service}: ${refreshError.message}`;
+        console.error(`[Engine] ${errorMsg}`, refreshError);
+        throw new Error(errorMsg);
+      }
     }
     auth = client;
+  } else {
+    console.warn(`[Engine] No integration found for ${service} and user ${userId}. Proceeding without auth (some pieces may fail).`);
   }
 
-  // 4. Run Action
-  return await action({ auth, params });
+  // 4. Run Action with detailed error wrapping
+  try {
+    return await action({ auth, params });
+  } catch (error: any) {
+    console.error(`[Engine] Error executing piece ${service}.${actionName}:`, error.message);
+    if (error.response?.data) {
+      console.error(`[Engine] Piece API Response Error Data:`, JSON.stringify(error.response.data));
+    }
+    throw error;
+  }
 }
 
 interface RunTriggerArgs {

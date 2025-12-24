@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = 'https://workflow-builder-backend-seven.vercel.app';
 const USER_ID = 'c866d8ee-5194-4605-8f8b-30f831604aa6'; // Shared test user
 
 async function testComplexUISave() {
