@@ -85,7 +85,7 @@ authRouter.get('/me', authenticateToken, async (req: any, res) => {
 // --- SERVICE CONNECTION FLOW ---
 authRouter.get('/connect/:service', (req, res) => {
   const { service } = req.params;
-  const { userId } = req.query;
+  const { userId, callbackUrl } = req.query;
 
   if (!SERVICE_SCOPES[service]) {
     return res.status(400).send('Unsupported service');
@@ -97,12 +97,12 @@ authRouter.get('/connect/:service', (req, res) => {
 
   const client = createOAuthClient(`/auth/callback/${service}`);
   
-    const url = client.generateAuthUrl({
-      access_type: 'offline',
-      prompt: 'consent',
-      scope: SERVICE_SCOPES[service],
-      state: JSON.stringify({ userId, service })
-    });
+  const url = client.generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'consent',
+    scope: SERVICE_SCOPES[service],
+    state: JSON.stringify({ userId, service, callbackUrl })
+  });
 
   res.redirect(url);
 });
@@ -115,7 +115,7 @@ authRouter.get('/callback/:service', async (req: any, res: any) => {
     if (!state) {
       return res.status(400).send('Missing state parameter. Please start the connection from the /auth/connect route.');
     }
-    const { userId, service: stateService } = JSON.parse(state as string);
+    const { userId, service: stateService, callbackUrl } = JSON.parse(state as string);
 
     if (service !== stateService) {
       return res.status(400).send('Service mismatch');
@@ -138,8 +138,11 @@ authRouter.get('/callback/:service', async (req: any, res: any) => {
       scopes: tokens.scope ?? undefined
     });
 
-    // Redirect to frontend integration page
-    res.redirect(`${FRONTEND_URL}/integration`);
+    // Redirect to specified path (appended to frontend URL) or default integration page
+    const finalRedirect = callbackUrl 
+      ? `${FRONTEND_URL}${callbackUrl}` 
+      : `${FRONTEND_URL}/integration`;
+    res.redirect(finalRedirect);
   } catch (error: any) {
     console.error('OAuth Callback Error:', error);
     res.status(500).json({ 
