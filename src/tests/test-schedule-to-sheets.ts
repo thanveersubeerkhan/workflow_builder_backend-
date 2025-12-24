@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const USER_ID = '647b22af-1f52-4fb7-adbb-91d5c817b74e';
+const USER_ID = '57d64ef3-aeb2-4428-9b04-e153f1febf37';
 const SPREADSHEET_ID = '12qKU5fr87VJlID-MyklB3cj7vWITXxNmqUK6NoC5qJM'; // Example ID
 
 async function setupScheduleToSheetsFlow() {
@@ -18,10 +18,10 @@ async function setupScheduleToSheetsFlow() {
       {
         name: 'log_to_sheets',
         piece: 'sheets',
-        action: 'appendRow',
+        action: 'appendRowSmart',
         params: {
           spreadsheetId: SPREADSHEET_ID,
-          range: 'Sheet1',
+          range: 'AutomatedLogs', // Use a specific name to test creation
           values: [
             'Schedule Fire',
             '{{steps.trigger.data.firedAt}}',

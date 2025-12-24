@@ -26,8 +26,11 @@ async function setup() {
       expiry_date BIGINT,
       scopes TEXT,
       created_at TIMESTAMP DEFAULT now(),
+      updated_at TIMESTAMP DEFAULT now(),
       UNIQUE (user_id, service)
     );
+
+    ALTER TABLE google_integrations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT now();
 
     CREATE TABLE IF NOT EXISTS flows (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

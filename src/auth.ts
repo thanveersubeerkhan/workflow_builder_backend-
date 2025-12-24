@@ -140,8 +140,13 @@ authRouter.get('/callback/:service', async (req: any, res: any) => {
 
     // Redirect to frontend integration page
     res.redirect(`${FRONTEND_URL}/integration`);
-  } catch (error) {
+  } catch (error: any) {
     console.error('OAuth Callback Error:', error);
-    res.status(500).send('Authentication failed');
+    res.status(500).json({ 
+      success: false, 
+      error: 'Authentication failed', 
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });

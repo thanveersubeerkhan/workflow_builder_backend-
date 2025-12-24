@@ -59,9 +59,29 @@ export async function getOrCreateUser(email: string, name?: string, pictureUrl?:
 }
 
 export async function saveIntegration(data: GoogleIntegration): Promise<void> {
-  const { userId, service, refreshToken, accessToken, expiryDate, scopes } = data as any; // Handle legacy param names if needed
+  const { 
+    user_id, 
+    userId, 
+    service, 
+    refresh_token, 
+    refreshToken, 
+    access_token, 
+    accessToken, 
+    expiry_date, 
+    expiryDate, 
+    scopes 
+  } = data as any;
   
-  const encryptedRefresh = encrypt(refreshToken);
+  const finalUserId = user_id || userId;
+  const finalRefreshToken = refresh_token || refreshToken;
+  const finalAccessToken = access_token || accessToken;
+  const finalExpiryDate = expiry_date || expiryDate;
+
+  if (!finalRefreshToken) {
+    throw new Error('Missing refresh_token in saveIntegration');
+  }
+
+  const encryptedRefresh = encrypt(finalRefreshToken);
 
   const query = `
     INSERT INTO google_integrations (user_id, service, refresh_token, access_token, expiry_date, scopes)
@@ -75,7 +95,7 @@ export async function saveIntegration(data: GoogleIntegration): Promise<void> {
       updated_at = now()
   `;
 
-  await pool.query(query, [userId, service, encryptedRefresh, accessToken, expiryDate, scopes]);
+  await pool.query(query, [finalUserId, service, encryptedRefresh, finalAccessToken, finalExpiryDate, scopes]);
 }
 
 export async function getIntegration(userId: string, service: string): Promise<GoogleIntegration | null> {
