@@ -1,5 +1,33 @@
 {
+  "name": "workflow_backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/socket.ts",
+    "worker": "tsx src/standalone-worker.ts",
+    "trigger": "tsx src/trigger-worker.ts",
+    "dev": "tsx watch src/socket.ts",
+    "build": "tsc",
+    "db:setup": "tsx src/setup-db.ts",
+    "test:full": "tsx src/master-test.ts",
+    "test:email": "tsx src/tests/test-email.ts",
+    "test:trigger": "tsx src/tests/test-trigger.ts",
+    "test:auto": "tsx src/tests/test-automated-trigger.ts",
+    "test:spiced": "tsx src/tests/test-spiced-flow.ts",
+    "test:pieces": "tsx src/tests/test-all-pieces.ts",
+    "test:schedule": "tsx src/tests/test-schedule-trigger.ts",
+    "test:schedule-sheets": "tsx src/tests/test-schedule-to-sheets.ts",
+    "test:mgmt": "tsx src/tests/test-management-api.ts",
+    "test:me": "tsx src/tests/test-me.ts",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "redis:up": "docker run -d --name workflow_redis -p 6379:6379 redis:7",
+    "redis:down": "docker stop workflow_redis && docker rm workflow_redis"
+  },
+  "keywords": [],
   "author": "",
+  "license": "ISC",
+  "description": "",
   "dependencies": {
     "@trigger.dev/sdk": "4.3.1",
     "@types/jsonwebtoken": "^9.0.10",
@@ -11,44 +39,18 @@
     "ioredis": "^5.8.2",
     "jsonwebtoken": "^9.0.3",
     "node-cron": "^4.2.1",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.1"
   },
-  "description": "",
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^25.0.3",
     "@types/node-cron": "^3.0.11",
     "@types/pg": "^8.16.0",
+    "@types/socket.io-client": "^3.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
-  },
-  "keywords": [
-  ],
-  "license": "ISC",
-  "name": "workflow_backend",
-  "scripts": {
-    "build": "tsc",
-    "db:setup": "tsx src/setup-db.ts",
-    "dev": "tsx watch src/index.ts",
-    "docker:down": "docker compose down",
-    "docker:up": "docker compose up -d",
-    "redis:down": "docker stop workflow_redis && docker rm workflow_redis",
-    "redis:up": "docker run -d --name workflow_redis -p 6379:6379 redis:7",
-    "start": "tsx src/index.ts",
-    "test:auto": "tsx src/tests/test-automated-trigger.ts",
-    "test:email": "tsx src/tests/test-email.ts",
-    "test:full": "tsx src/master-test.ts",
-    "test:me": "tsx src/tests/test-me.ts",
-    "test:mgmt": "tsx src/tests/test-management-api.ts",
-    "test:pieces": "tsx src/tests/test-all-pieces.ts",
-    "test:schedule": "tsx src/tests/test-schedule-trigger.ts",
-    "test:schedule-sheets": "tsx src/tests/test-schedule-to-sheets.ts",
-    "test:spiced": "tsx src/tests/test-spiced-flow.ts",
-    "test:trigger": "tsx src/tests/test-trigger.ts",
-    "trigger": "tsx src/trigger-worker.ts",
-    "worker": "tsx src/standalone-worker.ts"
-  },
-  "type": "module",
-  "version": "1.0.0"
+  }
 }

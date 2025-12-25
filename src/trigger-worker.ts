@@ -1,6 +1,9 @@
 import { pool, withAdvisoryLock } from './db.js';
 import { runTrigger } from './engine.js';
 import { executeFlow } from './worker.js';
+import { io } from 'socket.io-client';
+
+const socket = io(process.env.SOCKET_URL || 'http://localhost:3000');
 
 interface ScanOptions {
   flowId?: string;
@@ -80,7 +83,14 @@ export async function performTriggerScan(options: ScanOptions = {}, onTriggerFir
                   flowId: flow.id,
                   userId: flow.user_id,
                   definition: definition,
-                  triggerData: result.data
+                  triggerData: result.data,
+                  onEvent: (event, data) => {
+                      socket.emit('worker-relay', {
+                          room: `flow:${flow.id}`,
+                          event,
+                          data
+                      });
+                  }
                 });
               }
             }

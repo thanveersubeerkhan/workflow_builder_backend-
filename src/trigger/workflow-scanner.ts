@@ -1,68 +1,33 @@
-// import { schedules, wait } from "@trigger.dev/sdk/v3";
-// import { performTriggerScan } from "../trigger-worker.js";
-// import { workflowExecutor } from "./workflow-executor.js";
-
-// export const workflowScanner = schedules.task({
-//   id: "workflow-scanner",
-//   cron: "* * * * *", // Run every minute
-//   run: async (payload) => {
-//     console.log(`[Trigger.dev] Starting Workflow Scanner... Scheduled Time: ${payload.timestamp.toISOString()}`);
-    
-//     const result = await performTriggerScan({}, async (data) => {
-//       console.log(`[Trigger.dev] Enqueuing Executor for flow: ${data.flowId}`);
-//       await workflowExecutor.trigger(data);
-//     });
-
-//     return {
-//       fireCount: result.fireCount,
-//     };
-//   },
-// });
-import { schedules ,wait} from "@trigger.dev/sdk/v3";
+import { schedules, wait } from "@trigger.dev/sdk/v3";
 import { performTriggerScan } from "../trigger-worker.js";
 import { workflowExecutor } from "./workflow-executor.js";
 
-
-
-// export const workflowScanner = schedules.task({
-//   id: "workflow-scanner",
-//   cron: "* * * * *", // Run every minute
-//   run: async (payload) => {
-//     // Run 12 times (every 5 seconds for 1 minute)
-//     for (let i = 0; i < 12; i++) {
-//       const result = await performTriggerScan({}, async (data) => {
-//         await workflowExecutor.trigger(data);
-//       });
-      
-//       if (i < 11) {
-//         await wait.for({ seconds: 5 });
-//       }
-//     }
-//   },
-// });
-
-// src/trigger/workflow-scanner.ts
-// src/trigger/workflow-scanner.ts
 export const workflowScanner = schedules.task({
   id: "workflow-scanner",
   cron: "* * * * *", // Run every minute
   run: async (payload) => {
+    console.log(`[Trigger.dev] Starting 5s polling loop for 1 minute...`);
     let totalFireCount = 0;
 
-    for (let i = 0; i < 10; i++) {
+    // Run 12 times (12 * 5s = 60 seconds)
+    for (let i = 0; i < 12; i++) {
       const result = await performTriggerScan({}, async (data) => {
+        console.log(`[Trigger.dev] Enqueuing Executor for flow: ${data.flowId}`);
         await workflowExecutor.trigger(data);
       });
 
-      totalFireCount += result.fireCount; // Keep track of the total
+      totalFireCount += result.fireCount;
 
-    //   if (i == 10) {
-    //     await wait.for({ seconds: 5 });
-    //   } else {
-    //     await wait.for({ seconds: 5 }); // Wait 5s
-    //   }
+      // Wait 5 seconds before next scan, except on the last iteration
+      if (i < 11) {
+        await wait.for({ seconds: 5 });
+      }
     }
 
-    return { totalFireCount }; // Return final results
+    console.log(`[Trigger.dev] Loop finished. Total flows triggered in this minute: ${totalFireCount}`);
+    
+    return {
+      totalFireCount,
+    };
   },
 });

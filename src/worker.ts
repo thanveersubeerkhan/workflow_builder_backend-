@@ -8,14 +8,17 @@ interface ExecuteFlowArgs {
   userId: string;
   definition: FlowDefinition;
   triggerData?: any;
+  onEvent?: (event: string, data: any) => void;
 }
 
 /**
  * Directly executes a flow step-by-step.
  * This is serverless-friendly as it doesn't rely on background workers.
  */
-export async function executeFlow({ flowId, userId, definition, triggerData }: ExecuteFlowArgs) {
+export async function executeFlow({ flowId, userId, definition, triggerData, onEvent }: ExecuteFlowArgs) {
   console.log(`[Executor] Starting Flow: ${flowId} for User: ${userId}`);
+
+  if (onEvent) onEvent('flow-start', { flowId, runId: null });
 
   // 1. Create a run record
   const runRes = await pool.query(
@@ -23,6 +26,7 @@ export async function executeFlow({ flowId, userId, definition, triggerData }: E
     [flowId, 'running']
   );
   const runId = runRes.rows[0].id;
+  if (onEvent) onEvent('run-created', { runId });
 
   const context: any = { steps: { trigger: { data: triggerData } } };
   const logs: string[] = [];
@@ -52,6 +56,8 @@ export async function executeFlow({ flowId, userId, definition, triggerData }: E
           [JSON.stringify(logs), JSON.stringify(context.steps), runId]
         );
 
+        if (onEvent) onEvent('step-success', { stepName: step.name, result });
+
       } catch (stepError: any) {
         const errorDetail = (stepError as any).response?.data 
           ? JSON.stringify((stepError as any).response.data) 
@@ -65,6 +71,8 @@ export async function executeFlow({ flowId, userId, definition, triggerData }: E
           ['failed', JSON.stringify(logs), JSON.stringify(context.steps), runId]
         );
         
+        if (onEvent) onEvent('step-failure', { stepName: step.name, error: failureLog });
+        
         console.error(`[Executor] Flow ${flowId} failed at step ${step.name}:`, errorDetail);
         return { success: false, error: failureLog, runId };
       }
@@ -75,6 +83,8 @@ export async function executeFlow({ flowId, userId, definition, triggerData }: E
       'UPDATE flow_runs SET status = $1, logs = $2, result = $3 WHERE id = $4',
       ['success', JSON.stringify(logs), JSON.stringify(context.steps), runId]
     );
+    
+    if (onEvent) onEvent('flow-success', { flowId, runId });
     
     console.log(`[Executor] Flow ${flowId} finished successfully.`);
     return { success: true, runId };

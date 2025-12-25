@@ -46,6 +46,12 @@ async function setup() {
 
     ALTER TABLE flows ADD COLUMN IF NOT EXISTS ui_definition JSONB DEFAULT '{"nodes": [], "edges": []}';
     ALTER TABLE flows ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+    ALTER TABLE flows
+ALTER COLUMN last_trigger_data
+TYPE jsonb
+USING last_trigger_data::jsonb;
+
+ALTER TABLE flows ALTER COLUMN last_trigger_data SET DEFAULT '{"time":"", "runId":""}'::jsonb;
 
     -- Migration from status to is_active if status exists
     DO $$ 
