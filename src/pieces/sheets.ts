@@ -6,14 +6,22 @@ export const sheetsPiece: Piece = {
   actions: {
     appendRow: async ({ auth, params }) => {
       const sheets = google.sheets({ version: 'v4', auth });
-      const { spreadsheetId, range, values } = params;
+      let { spreadsheetId, range, values } = params;
+
+      // 1. Robust values handling (Parse strings, handle nested arrays)
+      if (typeof values === 'string' && values.trim().startsWith('[')) {
+        try { values = JSON.parse(values); } catch (e) {}
+      }
+      const row = Array.isArray(values) 
+        ? (Array.isArray(values[0]) ? values[0] : values) 
+        : [values];
 
       const res = await sheets.spreadsheets.values.append({
         spreadsheetId,
         range,
         valueInputOption: 'USER_ENTERED',
         requestBody: {
-          values: [values],
+          values: [row],
         },
       });
 
@@ -22,43 +30,44 @@ export const sheetsPiece: Piece = {
 
     appendRowSmart: async ({ auth, params }) => {
       const sheets = google.sheets({ version: 'v4', auth });
-      const { spreadsheetId, range, values } = params;
+      let { spreadsheetId, range, values } = params;
 
-      // 1. Check if sheet exists
+      // 1. Robust values handling
+      if (typeof values === 'string' && values.trim().startsWith('[')) {
+        try { values = JSON.parse(values); } catch (e) {}
+      }
+      const row = Array.isArray(values) 
+        ? (Array.isArray(values[0]) ? values[0] : values) 
+        : [values];
+
+      // 2. Discover/Create sheet (Case-Insensitive)
       try {
         const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId });
-        const sheetName = range.split('!')[0];
-        const exists = spreadsheet.data.sheets?.some(s => s.properties?.title === sheetName);
+        const targetSheetName = range.split('!')[0];
+        const existingSheet = spreadsheet.data.sheets?.find(s => 
+          s.properties?.title?.toLowerCase() === targetSheetName.toLowerCase()
+        );
 
-        if (!exists) {
-          console.log(`[Sheets] Creating sheet: ${sheetName}`);
+        if (!existingSheet) {
+          console.log(`[Sheets] Creating missing sheet: ${targetSheetName}`);
           await sheets.spreadsheets.batchUpdate({
             spreadsheetId,
             requestBody: {
-              requests: [
-                {
-                  addSheet: {
-                    properties: {
-                      title: sheetName,
-                    },
-                  },
-                },
-              ],
+              requests: [{ addSheet: { properties: { title: targetSheetName } } }],
             },
           });
         }
       } catch (err: any) {
-        console.error('[Sheets] Smart Append Error (Check/Create):', err.message);
-        // Fallback to normal append (might fail if spreadsheet itself doesn't exist)
+        console.error('[Sheets] Smart Append Discovery Error:', err.message);
       }
 
-      // 2. Append
+      // 3. Append
       const res = await sheets.spreadsheets.values.append({
         spreadsheetId,
         range,
         valueInputOption: 'USER_ENTERED',
         requestBody: {
-          values: [values],
+          values: [row],
         },
       });
 
