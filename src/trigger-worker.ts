@@ -3,7 +3,16 @@ import { runTrigger } from './engine.js';
 import { executeFlow } from './worker.js';
 import { io } from 'socket.io-client';
 
-const socket = io(process.env.SOCKET_URL || 'http://localhost:3000');
+const SOCKET_URL = process.env.SOCKET_URL || `http://localhost:${process.env.PORT || 3000}`;
+const socket = io(SOCKET_URL);
+
+socket.on('connect', () => {
+    console.log('[Worker] Connected to Socket Relay');
+});
+
+socket.on('connect_error', (err) => {
+    // console.error('[Worker] Socket connection error:', err.message);
+});
 
 interface ScanOptions {
   flowId?: string;
@@ -69,7 +78,6 @@ export async function performTriggerScan(options: ScanOptions = {}, onTriggerFir
               );
 
               fireCount++;
-
               // 2. Execute the flow (either via callback or directly)
               if (onTriggerFire) {
                 await onTriggerFire({
