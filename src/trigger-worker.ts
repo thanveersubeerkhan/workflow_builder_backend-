@@ -78,30 +78,20 @@ export async function performTriggerScan(options: ScanOptions = {}, onTriggerFir
               );
 
               fireCount++;
-              // 2. Execute the flow (either via callback or directly)
-              if (onTriggerFire) {
-                await onTriggerFire({
-                  flowId: flow.id,
-                  userId: flow.user_id,
-                  definition: definition,
-                  triggerData: result.data
-                });
-              } else {
-                await executeFlow({
-                  flowId: flow.id,
-                  userId: flow.user_id,
-                  definition: definition,
-                  triggerData: result.data,
-                  onEvent: (event, data) => {
-                      // Relay to main server to broadcast to frontend
-                      socket.emit('worker-relay', {
-                          room: `flow:${flow.id}`,
-                          event,
-                          data
-                      });
-                  }
-                });
-              }
+              await executeFlow({
+                flowId: flow.id,
+                userId: flow.user_id,
+                definition: definition,
+                triggerData: result.data,
+                onEvent: (event, data) => {
+                    // Relay to main server to broadcast to frontend
+                    socket.emit('worker-relay', {
+                        room: `flow:${flow.id}`,
+                        event,
+                        data
+                    });
+                }
+              });
             }
           } catch (err: any) {
             console.error(`[Trigger] Error checking trigger for flow ${flow.id}:`, err.message);
