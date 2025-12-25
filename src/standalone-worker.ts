@@ -41,6 +41,23 @@ Token Refresh:   Every ${REFRESH_INTERVAL / 60000}m
     // Run once immediately on startup
     performTriggerScan().catch(() => {});
     performTokenRefresh().catch(() => {});
+
+    // 3. Simple HTTP Server for Render Health Checks
+    // Render expects a Web Service to bind to a port.
+    try {
+        const express = await import('express');
+        const app = express.default();
+        const PORT = process.env.PORT || 10000; // Render uses 10000 by default for workers or random
+        
+        app.get('/', (req, res) => res.send('Worker is healthy'));
+        app.get('/health', (req, res) => res.send('OK'));
+        
+        app.listen(PORT, () => {
+            console.log(`📡 Health check server listening on port ${PORT}`);
+        });
+    } catch (e) {
+        console.warn('[Worker] Express not found, skipping health check server.');
+    }
 }
 
 // Graceful Shutdown
