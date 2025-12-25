@@ -106,3 +106,6 @@ npm run test:schedule   # Time-based triggers
 - `src/pieces/`: Implementation of service-specific triggers and actions.
 - `src/setup-db.ts`: Database schema definition and initialization logic.
 - `src/tests/`: Collection of scripts to verify individual components.
+
+
+trigger dev run:npx trigger.dev@latest deploy 
