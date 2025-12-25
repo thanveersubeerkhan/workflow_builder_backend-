@@ -5,10 +5,19 @@ dotenv.config();
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 
+// Detect if we are in a serverless environment
+export const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.FUNCTIONS_EMULATOR);
+
 // Setup Redis Connection Options
 const redisOptions: any = {
-    maxRetriesPerRequest: 1, // Minimize retries in serverless
-    enableReadyCheck: false,
+    // If on Vercel, fail fast. If on a worker, retry up to 10 times.
+    maxRetriesPerRequest: isServerless ? 1 : 10, 
+    enableReadyCheck: !isServerless,
+    connectTimeout: 15000, // 15 seconds (good for ngrok latency)
+    retryStrategy(times: number) {
+        if (isServerless) return null; // Don't retry on Vercel
+        return Math.min(times * 500, 2000); // Backoff for local worker
+    }
 };
 
 // Auto-enable TLS for cloud providers (rediss://)
@@ -19,7 +28,7 @@ if (redisUrl.startsWith('rediss://')) {
 }
 
 // Detect if we are in a serverless environment
-export const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.FUNCTIONS_EMULATOR);
+// (Moved to top)
 
 let redisClient: Redis | null = null;
 

@@ -9,7 +9,7 @@ import { pool } from './db.js';
  * It handles background polling without needing Vercel Cron.
  */
 
-const SCAN_INTERVAL = 5 * 1000; // 5 seconds
+const SCAN_INTERVAL = 10 * 1000; // 5 seconds
 const REFRESH_INTERVAL = 15 * 60 * 1000; // 15 minutes
 
 async function startWorker() {
