@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "tsx src/index.ts",
+    "start": "tsx src/socket.ts",
+    "start1": "tsx src/index.ts",
     "worker": "tsx src/standalone-worker.ts",
     "dev": "tsx watch src/socket.ts",
     "dev1": "tsx watch src/socket.ts",
@@ -11,7 +12,6 @@
     "db:setup": "tsx src/setup-db.ts",
     "test:full": "tsx src/master-test.ts",
     "test:email": "tsx src/tests/test-email.ts",
-    "test:trigger": "tsx src/tests/test-trigger.ts",
     "test:auto": "tsx src/tests/test-automated-trigger.ts",
     "test:spiced": "tsx src/tests/test-spiced-flow.ts",
     "test:pieces": "tsx src/tests/test-all-pieces.ts",
