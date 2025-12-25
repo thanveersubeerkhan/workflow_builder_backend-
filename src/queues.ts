@@ -1,4 +1,3 @@
-import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import dotenv from 'dotenv';
 
@@ -8,87 +7,48 @@ const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 
 // Setup Redis Connection Options
 const redisOptions: any = {
-    maxRetriesPerRequest: null,
+    maxRetriesPerRequest: 1, // Minimize retries in serverless
     enableReadyCheck: false,
 };
 
 // Auto-enable TLS for cloud providers (rediss://)
 if (redisUrl.startsWith('rediss://')) {
     redisOptions.tls = {
-        rejectUnauthorized: false // Often needed for various cloud providers
+        rejectUnauthorized: false
     };
 }
 
-// Singleton instances to manage connection lifecycle
-let sharedClient: Redis | null = null;
-const workerClients: Redis[] = [];
-
-// Detect if we are in a serverless environment (where workers shouldn't stay resident)
+// Detect if we are in a serverless environment
 export const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.FUNCTIONS_EMULATOR);
 
+let redisClient: Redis | null = null;
+
 /**
- * Returns a shared Redis connection for Queues and general use.
+ * Returns a shared Redis connection.
+ * In serverless, we reuse this if the instance stays warm.
  */
-export function getSharedConnection(): Redis {
-    if (!sharedClient) {
-        console.log(`[Redis] Opening new shared connection (Serverless: ${isServerless})`);
-        sharedClient = new Redis(redisUrl, redisOptions);
-        sharedClient.on('error', (err: any) => {
-            if (err.code === 'EPIPE' || err.code === 'ECONNRESET') {
-                console.warn('[Redis] Shared connection reset, attempting to recover...');
-            } else {
-                console.error('[Redis] Shared Connection Error:', err);
-            }
+export function getRedisClient(): Redis {
+    if (!redisClient) {
+        console.log(`[Redis] Opening new connection (Serverless: ${isServerless})`);
+        redisClient = new Redis(redisUrl, redisOptions);
+        
+        redisClient.on('error', (err: any) => {
+            console.error('[Redis] Connection Error:', err.message);
         });
     }
-    return sharedClient;
+    return redisClient;
 }
 
 /**
- * Creates and tracks a dedicated Redis connection for a BullMQ Worker.
+ * Gracefully closes Redis connection.
  */
-export function createWorkerConnection(): Redis | null {
-    if (isServerless) {
-        console.warn('[Redis] In serverless environment. Skipping dedicated worker connection.');
-        return null;
+export async function closeRedisConnection() {
+    if (redisClient) {
+        console.log('[Redis] Disconnecting...');
+        await redisClient.quit().catch(() => {});
+        redisClient = null;
     }
-
-    console.log(`[Redis] Opening dedicated worker connection. Total worker connections: ${workerClients.length + 1}`);
-    const client = new Redis(redisUrl, redisOptions);
-    workerClients.push(client);
-    
-    client.on('error', (err: any) => {
-        console.error('[Redis] Dedicated Worker Connection Error:', err);
-    });
-
-    return client;
 }
 
-/**
- * Gracefully closes all Redis connections.
- */
-export async function closeRedisConnections() {
-    console.log('[Redis] Disconnecting all clients...');
-    if (sharedClient) {
-        await sharedClient.quit().catch(() => {});
-        sharedClient = null;
-    }
-    await Promise.all(workerClients.map(c => c.quit().catch(() => {})));
-    workerClients.length = 0;
-}
-
-// Standard connection for Queues
-export const flowQueue = new Queue('flow-execution', { 
-    connection: getSharedConnection(),
-    skipVersionCheck: true
-});
-export const refreshQueue = new Queue('token-refresh', { 
-    connection: getSharedConnection(),
-    skipVersionCheck: true
-});
-export const triggerQueue = new Queue('trigger-polling', { 
-    connection: getSharedConnection(),
-    skipVersionCheck: true
-});
-
-export const redisConnection = getSharedConnection();
+// Export a default instance for convenience
+export const redis = getRedisClient();

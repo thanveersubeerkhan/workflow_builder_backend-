@@ -1,20 +1,22 @@
-import { Worker } from 'bullmq';
-import { createWorkerConnection, flowQueue, triggerQueue } from './queues.js';
 import { pool } from './db.js';
 import { runTrigger } from './engine.js';
+import { executeFlow } from './worker.js';
+
+interface ScanOptions {
+  flowId?: string;
+}
 
 /**
- * Trigger Polling Worker
- * Scans all flows for triggers and starts flows if new data is detected.
+ * Performs a scan for active triggers and executes flows directly.
+ * Designed to be called by a Cron job or a manual trigger.
  */
-const connection = createWorkerConnection();
-export const triggerWorker = connection ? new Worker('trigger-polling', async (job) => {
-  const { flowId } = job.data as { flowId?: string };
-  
+export async function performTriggerScan(options: ScanOptions = {}) {
+  const { flowId } = options;
+
   if (flowId) {
-    console.log(`[TriggerWorker] ⚡ Immediate Scan for Flow: ${flowId}`);
+    console.log(`[Trigger] ⚡ Scanning Specific Flow: ${flowId}`);
   } else {
-    console.log(`[TriggerWorker] ⏰ Periodic Scan [Job: ${job.id}]`);
+    console.log('[Trigger] ⏰ Starting Global Trigger Scan...');
   }
 
   try {
@@ -29,21 +31,17 @@ export const triggerWorker = connection ? new Worker('trigger-polling', async (j
     }
 
     if (flows.length === 0) {
-      if (flowId) {
-        console.log(`--- Flow ${flowId} not found or not active ---`);
-      } else {
-        console.log('--- No active flows found to scan ---');
-      }
-      return;
+      console.log('[Trigger] No active flows found to scan.');
+      return { success: true, flowsScanned: 0 };
     }
+
+    let fireCount = 0;
 
     for (const flow of flows) {
       const definition = flow.definition;
       const trigger = definition.trigger;
 
       if (!trigger) continue;
-
-      console.log(`Checking trigger [${trigger.name}] for flow: ${flow.name}`);
 
       try {
         const result = await runTrigger({
@@ -63,38 +61,24 @@ export const triggerWorker = connection ? new Worker('trigger-polling', async (j
             [result.newLastId, flow.id]
           );
 
-          // 2. Add the flow execution to the queue
-          await flowQueue.add(`${flow.name}-${Date.now()}`, {
+          // 2. Execute the flow directly (synchronous in serverless context)
+          fireCount++;
+          await executeFlow({
             flowId: flow.id,
             userId: flow.user_id,
             definition: definition,
             triggerData: result.data
           });
-        } else {
-          // console.log(`[TriggerWorker] No new data for flow: ${flow.name}`);
         }
       } catch (err: any) {
-        console.error(`[TriggerWorker] Error checking trigger for flow ${flow.id}:`, err.message);
+        console.error(`[Trigger] Error checking trigger for flow ${flow.id}:`, err.message);
       }
     }
+
+    return { success: true, flowsScanned: flows.length, fires: fireCount };
+
   } catch (error: any) {
-    console.error('Trigger Poll Job Error:', error.message);
+    console.error('[Trigger] Scan Error:', error.message);
+    throw error;
   }
-  
-  console.log('--- Trigger Scan Completed ---');
-}, { connection, skipVersionCheck: true }) : null;
-
-if (!triggerWorker) {
-    console.warn('[TriggerWorker] Trigger Worker NOT started (Serverless or No Connection)');
-}
-
-
-// Schedule polling every 30 seconds for responsive triggers
-export async function scheduleTriggerJob() {
-    console.log('[TriggerWorker] Scheduling repeatable polling job (30s interval)...');
-    await triggerQueue.add('trigger-poll-repeatable', {}, {
-        repeat: {
-            every: 30000 // 30 seconds
-        }
-    });
 }

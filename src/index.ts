@@ -6,11 +6,11 @@ import { tokenRouter } from './tokens.js';
 import { disconnectRouter } from './disconnect.js';
 import { pool } from './db.js';
 import { runAction } from './engine.js';
-import { flowQueue, triggerQueue, closeRedisConnections, isServerless } from './queues.js';
+import { closeRedisConnection, isServerless } from './queues.js';
 import { mapUIToDefinition } from './flow-mapper.js';
-import './worker.js';
-import { scheduleRefreshJob } from './refresh-worker.js';
-import { scheduleTriggerJob } from './trigger-worker.js';
+import { executeFlow } from './worker.js';
+import { performTokenRefresh } from './refresh-worker.js';
+import { performTriggerScan } from './trigger-worker.js';
 
 dotenv.config();
 
@@ -28,27 +28,50 @@ app.use('/auth', authRouter);
 app.use('/api/tokens', tokenRouter);
 app.use('/api/disconnect', disconnectRouter);
 
-// Service Information & Status Endpoint
+// --- Admin & Cron Endpoints (For Serverless/Vercel) ---
+
+/**
+ * Trigger Scan Endpoint
+ * Call this every minute via Vercel Cron to process active flows.
+ */
+app.get('/api/cron/scan', async (req, res) => {
+    try {
+        const result = await performTriggerScan();
+        res.json(result);
+    } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * Token Refresh Endpoint
+ * Call this every 10-15 minutes via Vercel Cron.
+ */
+app.get('/api/cron/refresh', async (req, res) => {
+    try {
+        const result = await performTokenRefresh();
+        res.json(result);
+    } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// --- Standard API Endpoints ---
+
 app.get('/api/services', async (req: express.Request, res: express.Response) => {
   const userId = req.query.userId as string;
-
-  if (!userId) {
-    return res.status(400).json({ success: false, error: 'userId is required' });
-  }
+  if (!userId) return res.status(400).json({ success: false, error: 'userId is required' });
 
   try {
-    // 1. Get all service definitions from DB
     const metadataRes = await pool.query('SELECT * FROM services_metadata');
     const servicesMetadata = metadataRes.rows;
 
-    // 2. Get connected services for this user
     const dbRes = await pool.query(
       'SELECT service FROM google_integrations WHERE user_id = $1',
       [userId]
     );
     const connectedServices = new Set(dbRes.rows.map(row => row.service));
 
-    // 3. Merge metadata with connection status
     const services = servicesMetadata.map(service => ({
       ...service,
       connected: connectedServices.has(service.id)
@@ -60,7 +83,6 @@ app.get('/api/services', async (req: express.Request, res: express.Response) => 
   }
 });
 
-// Engine Execution Endpoint (Single Action)
 app.post('/api/run', async (req: express.Request, res: express.Response) => {
   const { userId, service, actionName, params } = req.body;
   try {
@@ -71,11 +93,8 @@ app.post('/api/run', async (req: express.Request, res: express.Response) => {
   }
 });
 
-// 1. Create Flow
 app.post('/api/flows', async (req: express.Request, res: express.Response) => {
   const { userId, name, ui_definition } = req.body;
-  
-  // Auto-map UI to Definition
   const definition = mapUIToDefinition(ui_definition || { nodes: [], edges: [] });
 
   try {
@@ -83,17 +102,12 @@ app.post('/api/flows', async (req: express.Request, res: express.Response) => {
       'INSERT INTO flows (user_id, name, definition, ui_definition, is_active) VALUES ($1, $2, $3, $4, $5) RETURNING *',
       [userId, name, JSON.stringify(definition), JSON.stringify(ui_definition || { nodes: [], edges: [] }), false]
     );
-    const flow = result.rows[0];
-
-    // Note: We no longer auto-queue on create. User must toggle is_active or call /run manually.
-
-    res.json({ success: true, flowId: flow.id, flow });
+    res.json({ success: true, flow: result.rows[0] });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// 2. List User Flows
 app.get('/api/flows', async (req: express.Request, res: express.Response) => {
   const userId = req.query.userId as string;
   if (!userId) return res.status(400).json({ error: 'userId is required' });
@@ -109,7 +123,6 @@ app.get('/api/flows', async (req: express.Request, res: express.Response) => {
   }
 });
 
-// 3. Get Single Flow Detail
 app.get('/api/flows/:flowId', async (req: express.Request, res: express.Response) => {
   const { flowId } = req.params;
   try {
@@ -121,7 +134,6 @@ app.get('/api/flows/:flowId', async (req: express.Request, res: express.Response
   }
 });
 
-// 3.5 Get Flow Runs (for debugging failures)
 app.get('/api/flows/:flowId/runs', async (req: express.Request, res: express.Response) => {
   const { flowId } = req.params;
   try {
@@ -135,7 +147,6 @@ app.get('/api/flows/:flowId/runs', async (req: express.Request, res: express.Res
   }
 });
 
-// 4. Update Flow (Full Support with Auto-Mapping)
 app.patch('/api/flows/:flowId', async (req: express.Request, res: express.Response) => {
   const { flowId } = req.params;
   const { name, ui_definition, is_active } = req.body;
@@ -151,12 +162,9 @@ app.patch('/api/flows/:flowId', async (req: express.Request, res: express.Respon
     }
     
     if (ui_definition !== undefined) {
-      // Auto-map UI to Definition
       const definition = mapUIToDefinition(ui_definition);
-      
       updates.push(`ui_definition = $${paramIdx++}`);
       values.push(JSON.stringify(ui_definition));
-      
       updates.push(`definition = $${paramIdx++}`);
       values.push(JSON.stringify(definition));
     }
@@ -166,44 +174,29 @@ app.patch('/api/flows/:flowId', async (req: express.Request, res: express.Respon
       values.push(is_active === true || is_active === 'true');
     }
 
-    if (updates.length === 0) {
-      return res.status(400).json({ error: 'No fields to update' });
-    }
+    if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
 
     values.push(flowId);
-    const query = `
-      UPDATE flows 
-      SET ${updates.join(', ')}, updated_at = now() 
-      WHERE id = $${paramIdx} 
-      RETURNING *
-    `;
+    const result = await pool.query(
+      `UPDATE flows SET ${updates.join(', ')}, updated_at = now() WHERE id = $${paramIdx} RETURNING *`,
+      values
+    );
 
-    const result = await pool.query(query, values);
     if (result.rowCount === 0) return res.status(404).json({ error: 'Flow not found' });
-
     const updatedFlow = result.rows[0];
 
-    // If flow was activated, trigger an immediate scan
+    // Immediate scan if activated
     if (is_active === true || is_active === 'true') {
-      console.log(`[Flow] Flow ${flowId} activated. Triggering immediate scan...`);
-      try {
-        await triggerQueue.add(`immediate-scan-${flowId}-${Date.now()}`, { flowId });
-      } catch (redisError: any) {
-        console.warn(`[Flow] Failed to queue immediate scan (Redis error): ${redisError.message}`);
-        // We still return success for the DB update
-      }
+        console.log(`[Flow] Flow ${flowId} activated. Running immediate scan...`);
+        performTriggerScan({ flowId }).catch(e => console.error('[Flow] Async scan error:', e.message));
     }
 
-    return res.json({ success: true, flow: updatedFlow });
+    res.json({ success: true, flow: updatedFlow });
   } catch (error: any) {
-    if (!res.headersSent) {
-      return res.status(500).json({ error: error.message });
-    }
-    console.error('[Flow] Error after headers sent:', error.message);
+    if (!res.headersSent) res.status(500).json({ error: error.message });
   }
 });
 
-// Delete Flow
 app.delete('/api/flows/:flowId', async (req, res) => {
   const { flowId } = req.params;
   try {
@@ -215,7 +208,6 @@ app.delete('/api/flows/:flowId', async (req, res) => {
   }
 });
 
-// Manual Run (Queue existing flow)
 app.post('/api/flows/:flowId/run', async (req, res) => {
   const { flowId } = req.params;
   try {
@@ -223,20 +215,21 @@ app.post('/api/flows/:flowId/run', async (req, res) => {
     if (result.rowCount === 0) return res.status(404).json({ error: 'Flow not found' });
 
     const flow = result.rows[0];
-    await flowQueue.add(`manual-run-${flow.id}-${Date.now()}`, {
+    
+    // Direct Execution instead of Queueing
+    const runResult = await executeFlow({
       flowId: flow.id,
       userId: flow.user_id,
       definition: flow.definition
     });
 
-    res.json({ success: true, message: 'Flow execution queued' });
+    res.json(runResult);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Connection Status API
-app.get('/api/connections/:userId', async (req: express.Request, res: express.Response) => {
+app.get('/api/connections/:userId', async (req, res) => {
   const { userId } = req.params;
   try {
     const result = await pool.query(
@@ -251,43 +244,15 @@ app.get('/api/connections/:userId', async (req: express.Request, res: express.Re
 
 app.get('/health', (req, res) => res.send('OK'));
 
-app.listen(PORT, async () => {
-  console.log(`
-🚀 SaaS Google Integrations Backend (TypeScript) is running!
-----------------------------------------------
-Base URL: ${process.env.BASE_URL}
-OAuth Connect: ${process.env.BASE_URL}/auth/connect/:service?userId=...
-Token Provider: GET /api/tokens/:userId/:service
-Disconnect: DELETE /api/disconnect/:userId/:service
-----------------------------------------------
-  `);
-  
-  // Starting Proactive background jobs
-  if (!isServerless) {
-    await scheduleRefreshJob();
-    await scheduleTriggerJob();
-  } else {
-    console.log('[Server] In serverless environment. Skipping background job scheduling.');
-  }
+app.listen(PORT, () => {
+  console.log(`🚀 Serverless-ready Backend running on port ${PORT}`);
 });
 
-// Graceful Shutdown
 const shutdown = async (signal: string) => {
-  console.log(`\n[Server] ${signal} received. Starting graceful shutdown...`);
-  
-  try {
-    // 1. Disconnect Redis
-    await closeRedisConnections();
-    
-    // 2. Close Database Pool
-    await pool.end();
-    
-    console.log('[Server] Graceful shutdown complete. Bye!');
-    process.exit(0);
-  } catch (err) {
-    console.error('[Server] Error during shutdown:', err);
-    process.exit(1);
-  }
+  console.log(`\n[Server] ${signal} received. Shutting down...`);
+  await closeRedisConnection();
+  await pool.end();
+  process.exit(0);
 };
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));

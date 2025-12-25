@@ -1,22 +1,23 @@
-import { Worker, Job } from 'bullmq';
-import { createWorkerConnection, flowQueue } from './queues.js';
 import { runAction } from './engine.js';
 import { resolveVariables } from './mapping-engine.js';
 import { pool } from './db.js';
 import { FlowDefinition } from './types.js';
 
-interface FlowJobData {
+interface ExecuteFlowArgs {
   flowId: string;
   userId: string;
   definition: FlowDefinition;
+  triggerData?: any;
 }
 
-const connection = createWorkerConnection();
+/**
+ * Directly executes a flow step-by-step.
+ * This is serverless-friendly as it doesn't rely on background workers.
+ */
+export async function executeFlow({ flowId, userId, definition, triggerData }: ExecuteFlowArgs) {
+  console.log(`[Executor] Starting Flow: ${flowId} for User: ${userId}`);
 
-export const flowWorker = connection ? new Worker<FlowJobData>('flow-execution', async (job: Job<FlowJobData>) => {
-  const { flowId, userId, definition, triggerData } = job.data as any;
-  console.log(`[Worker] Starting Flow: ${flowId} for User: ${userId}`);
-
+  // 1. Create a run record
   const runRes = await pool.query(
     'INSERT INTO flow_runs (flow_id, status) VALUES ($1, $2) RETURNING id',
     [flowId, 'running']
@@ -45,9 +46,9 @@ export const flowWorker = connection ? new Worker<FlowJobData>('flow-execution',
         const duration = Date.now() - stepStartTime;
         logs.push(`[${new Date().toISOString()}] ✅ Successfully completed ${step.name} in ${duration}ms`);
       } catch (stepError: any) {
-        const errorDetail = stepError.response?.data 
-          ? JSON.stringify(stepError.response.data) 
-          : stepError.message;
+        const errorDetail = (stepError as any).response?.data 
+          ? JSON.stringify((stepError as any).response.data) 
+          : (stepError as any).message;
         
         const failureLog = `❌ FAILED at Step: "${step.name}". Error: ${errorDetail}`;
         logs.push(`[${new Date().toISOString()}] ${failureLog}`);
@@ -57,38 +58,28 @@ export const flowWorker = connection ? new Worker<FlowJobData>('flow-execution',
           ['failed', JSON.stringify(logs), JSON.stringify(context.steps), runId]
         );
         
-        console.error(`[Worker] Flow ${flowId} failed at step ${step.name}:`, errorDetail);
-        return { success: false, error: failureLog };
+        console.error(`[Executor] Flow ${flowId} failed at step ${step.name}:`, errorDetail);
+        return { success: false, error: failureLog, runId };
       }
     }
 
+    // 2. Mark as success
     await pool.query(
       'UPDATE flow_runs SET status = $1, logs = $2, result = $3 WHERE id = $4',
       ['success', JSON.stringify(logs), JSON.stringify(context.steps), runId]
     );
     
+    console.log(`[Executor] Flow ${flowId} finished successfully.`);
     return { success: true, runId };
 
   } catch (error: any) {
-    console.error(`[Worker] Critical failure in flow ${flowId}:`, error.message);
+    console.error(`[Executor] Critical failure in flow ${flowId}:`, error.message);
     logs.push(`[${new Date().toISOString()}] CRITICAL ERROR: ${error.message}`);
     
     await pool.query(
       'UPDATE flow_runs SET status = $1, logs = $2 WHERE id = $3',
       ['failed', JSON.stringify(logs), runId]
     );
-    throw error;
+    return { success: false, error: error.message, runId };
   }
-}, { connection, skipVersionCheck: true }) : null;
-
-if (flowWorker) {
-  flowWorker.on('completed', job => {
-    console.log(`Job ${job.id} completed!`);
-  });
-
-  flowWorker.on('failed', (job, err) => {
-    console.log(`Job ${job?.id} failed: ${err.message}`);
-  });
-} else {
-  console.warn('[Worker] Flow Worker NOT started (Serverless or No Connection)');
 }

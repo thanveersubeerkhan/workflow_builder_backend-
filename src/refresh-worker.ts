@@ -1,25 +1,22 @@
-import { Worker } from 'bullmq';
-import { createWorkerConnection, refreshQueue } from './queues.js';
 import { getAllIntegrations, saveIntegration } from './db.js';
 import { createOAuthClient } from './google.js';
 
 /**
- * Token Refresh Worker (BullMQ version)
- * This handles the periodic background refresh of all tokens
+ * Proactively refreshes Google OAuth tokens that are near expiry.
  */
-const connection = createWorkerConnection();
-export const refreshWorker = connection ? new Worker('token-refresh', async (job) => {
-  console.log('--- Starting Proactive Token Refresh Job ---');
+export async function performTokenRefresh() {
+  console.log('[Refresh] Starting Proactive Token Refresh...');
   
   try {
     const integrations = await getAllIntegrations();
     const now = Date.now();
+    let refreshCount = 0;
 
     for (const integration of integrations) {
       // Check if it's expiring in the next 15 minutes
       const buffer = 15 * 60 * 1000;
       if (integration.expiry_date && (Number(integration.expiry_date) < now + buffer)) {
-        console.log(`Refreshing: ${integration.user_id} - ${integration.service}`);
+        console.log(`[Refresh] Refreshing: ${integration.user_id} - ${integration.service}`);
         
         const client = createOAuthClient();
         client.setCredentials({ refresh_token: integration.refresh_token });
@@ -36,29 +33,17 @@ export const refreshWorker = connection ? new Worker('token-refresh', async (job
             scopes: integration.scopes
           });
           
-          console.log(`✅ Refreshed ${integration.service}`);
+          refreshCount++;
+          console.log(`[Refresh] ✅ Successfully refreshed ${integration.service}`);
         } catch (err: any) {
-          console.error(`❌ Failed to refresh ${integration.service} for ${integration.user_id}:`, err.message);
+          console.error(`[Refresh] ❌ Failed to refresh ${integration.service} for ${integration.user_id}:`, err.message);
         }
       }
     }
+    
+    return { success: true, totalRefreshed: refreshCount };
   } catch (error: any) {
-    console.error('Proactive Refresh Job Error:', error.message);
+    console.error('[Refresh] Error:', error.message);
+    throw error;
   }
-  
-  console.log('--- Proactive Refresh Job Completed ---');
-}, { connection, skipVersionCheck: true }) : null;
-
-if (!refreshWorker) {
-    console.warn('[RefreshWorker] Refresh Worker NOT started (Serverless or No Connection)');
-}
-
-
-// Schedule the repeatable job if it doesn't exist
-export async function scheduleRefreshJob() {
-    await refreshQueue.add('token-refresh-repeatable', {}, {
-        repeat: {
-            pattern: '*/10 * * * *' // Every 10 minutes
-        }
-    });
 }
