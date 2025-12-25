@@ -49,16 +49,18 @@ export const workflowScanner = schedules.task({
   run: async (payload) => {
     let totalFireCount = 0;
 
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 10; i++) {
       const result = await performTriggerScan({}, async (data) => {
         await workflowExecutor.trigger(data);
       });
 
       totalFireCount += result.fireCount; // Keep track of the total
 
-      if (i < 11) {
-        await wait.for({ seconds: 5 }); // Wait 5s
-      }
+    //   if (i == 10) {
+    //     await wait.for({ seconds: 5 });
+    //   } else {
+    //     await wait.for({ seconds: 5 }); // Wait 5s
+    //   }
     }
 
     return { totalFireCount }; // Return final results
