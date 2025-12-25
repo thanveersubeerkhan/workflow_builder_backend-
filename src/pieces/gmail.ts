@@ -47,25 +47,49 @@ export const gmailPiece: Piece = {
   },
 
   triggers: {
-    newEmail: async ({ auth, lastProcessedId }) => {
+    newEmail: async ({ auth, lastProcessedId, params }) => {
       const gmail = google.gmail({ version: 'v1', auth });
       const res = await gmail.users.messages.list({
         userId: 'me',
         maxResults: 5,
+        q: params?.q || '',
       });
 
       const messages = res.data.messages || [];
-      if (messages.length > 0 && messages[0].id !== lastProcessedId) {
-        const details = await gmail.users.messages.get({
-          userId: 'me',
-          id: messages[0].id!
-        });
-        return {
-          newLastId: messages[0].id,
-          data: details.data
-        };
+      
+      // If no messages or the latest is already processed, nothing to do
+      if (messages.length === 0 || messages[0].id === lastProcessedId) {
+        return null;
       }
-      return null;
+
+      // Find the first message that IS our lastProcessedId
+      // and take the one right AFTER it in the list (which is the next newest)
+      // or if not found, just take the oldest in the 5-item window
+      let targetMessage = messages[0];
+      
+      if (lastProcessedId) {
+        const lastIdx = messages.findIndex(m => m.id === lastProcessedId);
+        if (lastIdx > 0) {
+            // There are messages between messages[0] and lastProcessedId
+            // We pick the one right before lastProcessedId in the array (idx - 1)
+            // so we process them in chronological order
+            targetMessage = messages[lastIdx - 1];
+        } else if (lastIdx === -1) {
+            // lastProcessedId not in the 5-item window? 
+            // Default to the most recent one to reset the marker
+            targetMessage = messages[0];
+        }
+      }
+
+      const details = await gmail.users.messages.get({
+        userId: 'me',
+        id: targetMessage.id!
+      });
+
+      return {
+        newLastId: targetMessage.id,
+        data: details.data
+      };
     }
   }
 };

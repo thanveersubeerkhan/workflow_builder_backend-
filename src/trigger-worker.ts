@@ -11,9 +11,9 @@ export const triggerWorker = new Worker('trigger-polling', async (job) => {
   const { flowId } = job.data as { flowId?: string };
   
   if (flowId) {
-    console.log(`--- Scanning Specific Flow: ${flowId} ---`);
+    console.log(`[TriggerWorker] ⚡ Immediate Scan for Flow: ${flowId}`);
   } else {
-    console.log('--- Scanning for Automated Triggers ---');
+    console.log(`[TriggerWorker] ⏰ Periodic Scan [Job: ${job.id}]`);
   }
 
   try {
@@ -54,7 +54,7 @@ export const triggerWorker = new Worker('trigger-polling', async (job) => {
         });
 
         if (result && result.newLastId) {
-          console.log(`🎯 Trigger FIRE! New item found for flow ${flow.id}.`);
+          console.log(`🎯 Trigger FIRE! [${trigger.name}] for flow ${flow.id}. New item: ${result.newLastId}`);
 
           // 1. Update the last processed ID in DB immediately
           await pool.query(
@@ -63,15 +63,17 @@ export const triggerWorker = new Worker('trigger-polling', async (job) => {
           );
 
           // 2. Add the flow execution to the queue
-          await flowQueue.add(`flow-run-${Date.now()}`, {
+          await flowQueue.add(`${flow.name}-${Date.now()}`, {
             flowId: flow.id,
             userId: flow.user_id,
             definition: definition,
-            triggerData: result.data // Pass trigger output to the rest of the flow
+            triggerData: result.data
           });
+        } else {
+          // console.log(`[TriggerWorker] No new data for flow: ${flow.name}`);
         }
       } catch (err: any) {
-        console.error(`Error checking trigger for flow ${flow.id}:`, err.message);
+        console.error(`[TriggerWorker] Error checking trigger for flow ${flow.id}:`, err.message);
       }
     }
   } catch (error: any) {
