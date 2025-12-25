@@ -185,13 +185,18 @@ app.patch('/api/flows/:flowId', async (req: express.Request, res: express.Respon
     if (result.rowCount === 0) return res.status(404).json({ error: 'Flow not found' });
     const updatedFlow = result.rows[0];
 
-    // Immediate scan if activated
+    res.json({ success: true, flow: updatedFlow });
+
+    // Immediate scan if activated (Fire and forget)
     if (is_active === true || is_active === 'true') {
-        console.log(`[Flow] Flow ${flowId} activated. Running immediate scan...`);
-        performTriggerScan({ flowId }).catch(e => console.error('[Flow] Async scan error:', e.message));
+        console.log(`[Flow] Flow ${flowId} activated. Running background scan...`);
+        // We set a tiny timeout to ensure the response is flushed before heavy work starts
+        setTimeout(() => {
+            performTriggerScan({ flowId }).catch(e => console.error('[Flow] Async scan error:', e.message));
+        }, 10);
     }
 
-    res.json({ success: true, flow: updatedFlow });
+    return;
   } catch (error: any) {
     if (!res.headersSent) res.status(500).json({ error: error.message });
   }

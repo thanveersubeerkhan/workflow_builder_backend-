@@ -45,6 +45,13 @@ export async function executeFlow({ flowId, userId, definition, triggerData }: E
         context.steps[step.name] = { data: result };
         const duration = Date.now() - stepStartTime;
         logs.push(`[${new Date().toISOString()}] ✅ Successfully completed ${step.name} in ${duration}ms`);
+
+        // Update DB after EVERY step for real-time progress
+        await pool.query(
+          'UPDATE flow_runs SET logs = $1, result = $2 WHERE id = $3',
+          [JSON.stringify(logs), JSON.stringify(context.steps), runId]
+        );
+
       } catch (stepError: any) {
         const errorDetail = (stepError as any).response?.data 
           ? JSON.stringify((stepError as any).response.data) 
