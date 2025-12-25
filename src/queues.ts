@@ -23,11 +23,15 @@ if (redisUrl.startsWith('rediss://')) {
 let sharedClient: Redis | null = null;
 const workerClients: Redis[] = [];
 
+// Detect if we are in a serverless environment (where workers shouldn't stay resident)
+export const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.FUNCTIONS_EMULATOR);
+
 /**
  * Returns a shared Redis connection for Queues and general use.
  */
 export function getSharedConnection(): Redis {
     if (!sharedClient) {
+        console.log(`[Redis] Opening new shared connection (Serverless: ${isServerless})`);
         sharedClient = new Redis(redisUrl, redisOptions);
         sharedClient.on('error', (err: any) => {
             if (err.code === 'EPIPE' || err.code === 'ECONNRESET') {
@@ -43,7 +47,13 @@ export function getSharedConnection(): Redis {
 /**
  * Creates and tracks a dedicated Redis connection for a BullMQ Worker.
  */
-export function createWorkerConnection(): Redis {
+export function createWorkerConnection(): Redis | null {
+    if (isServerless) {
+        console.warn('[Redis] In serverless environment. Skipping dedicated worker connection.');
+        return null;
+    }
+
+    console.log(`[Redis] Opening dedicated worker connection. Total worker connections: ${workerClients.length + 1}`);
     const client = new Redis(redisUrl, redisOptions);
     workerClients.push(client);
     
@@ -68,8 +78,17 @@ export async function closeRedisConnections() {
 }
 
 // Standard connection for Queues
-export const flowQueue = new Queue('flow-execution', { connection: getSharedConnection() });
-export const refreshQueue = new Queue('token-refresh', { connection: getSharedConnection() });
-export const triggerQueue = new Queue('trigger-polling', { connection: getSharedConnection() });
+export const flowQueue = new Queue('flow-execution', { 
+    connection: getSharedConnection(),
+    skipVersionCheck: true
+});
+export const refreshQueue = new Queue('token-refresh', { 
+    connection: getSharedConnection(),
+    skipVersionCheck: true
+});
+export const triggerQueue = new Queue('trigger-polling', { 
+    connection: getSharedConnection(),
+    skipVersionCheck: true
+});
 
 export const redisConnection = getSharedConnection();

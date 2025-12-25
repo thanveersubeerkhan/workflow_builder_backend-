@@ -6,7 +6,7 @@ import { tokenRouter } from './tokens.js';
 import { disconnectRouter } from './disconnect.js';
 import { pool } from './db.js';
 import { runAction } from './engine.js';
-import { flowQueue, triggerQueue, closeRedisConnections } from './queues.js';
+import { flowQueue, triggerQueue, closeRedisConnections, isServerless } from './queues.js';
 import { mapUIToDefinition } from './flow-mapper.js';
 import './worker.js';
 import { scheduleRefreshJob } from './refresh-worker.js';
@@ -182,15 +182,24 @@ app.patch('/api/flows/:flowId', async (req: express.Request, res: express.Respon
     if (result.rowCount === 0) return res.status(404).json({ error: 'Flow not found' });
 
     const updatedFlow = result.rows[0];
-    res.json({ success: true, flow: updatedFlow });
 
     // If flow was activated, trigger an immediate scan
     if (is_active === true || is_active === 'true') {
       console.log(`[Flow] Flow ${flowId} activated. Triggering immediate scan...`);
-      await triggerQueue.add(`immediate-scan-${flowId}-${Date.now()}`, { flowId });
+      try {
+        await triggerQueue.add(`immediate-scan-${flowId}-${Date.now()}`, { flowId });
+      } catch (redisError: any) {
+        console.warn(`[Flow] Failed to queue immediate scan (Redis error): ${redisError.message}`);
+        // We still return success for the DB update
+      }
     }
+
+    return res.json({ success: true, flow: updatedFlow });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    if (!res.headersSent) {
+      return res.status(500).json({ error: error.message });
+    }
+    console.error('[Flow] Error after headers sent:', error.message);
   }
 });
 
@@ -254,8 +263,12 @@ Disconnect: DELETE /api/disconnect/:userId/:service
   `);
   
   // Starting Proactive background jobs
-  await scheduleRefreshJob();
-  await scheduleTriggerJob();
+  if (!isServerless) {
+    await scheduleRefreshJob();
+    await scheduleTriggerJob();
+  } else {
+    console.log('[Server] In serverless environment. Skipping background job scheduling.');
+  }
 });
 
 // Graceful Shutdown

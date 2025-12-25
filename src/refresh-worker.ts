@@ -7,7 +7,8 @@ import { createOAuthClient } from './google.js';
  * Token Refresh Worker (BullMQ version)
  * This handles the periodic background refresh of all tokens
  */
-export const refreshWorker = new Worker('token-refresh', async (job) => {
+const connection = createWorkerConnection();
+export const refreshWorker = connection ? new Worker('token-refresh', async (job) => {
   console.log('--- Starting Proactive Token Refresh Job ---');
   
   try {
@@ -46,7 +47,12 @@ export const refreshWorker = new Worker('token-refresh', async (job) => {
   }
   
   console.log('--- Proactive Refresh Job Completed ---');
-}, { connection: createWorkerConnection() });
+}, { connection, skipVersionCheck: true }) : null;
+
+if (!refreshWorker) {
+    console.warn('[RefreshWorker] Refresh Worker NOT started (Serverless or No Connection)');
+}
+
 
 // Schedule the repeatable job if it doesn't exist
 export async function scheduleRefreshJob() {

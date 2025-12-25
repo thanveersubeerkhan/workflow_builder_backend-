@@ -11,7 +11,9 @@ interface FlowJobData {
   definition: FlowDefinition;
 }
 
-export const flowWorker = new Worker<FlowJobData>('flow-execution', async (job: Job<FlowJobData>) => {
+const connection = createWorkerConnection();
+
+export const flowWorker = connection ? new Worker<FlowJobData>('flow-execution', async (job: Job<FlowJobData>) => {
   const { flowId, userId, definition, triggerData } = job.data as any;
   console.log(`[Worker] Starting Flow: ${flowId} for User: ${userId}`);
 
@@ -77,12 +79,16 @@ export const flowWorker = new Worker<FlowJobData>('flow-execution', async (job: 
     );
     throw error;
   }
-}, { connection: createWorkerConnection() });
+}, { connection, skipVersionCheck: true }) : null;
 
-flowWorker.on('completed', job => {
-  console.log(`Job ${job.id} completed!`);
-});
+if (flowWorker) {
+  flowWorker.on('completed', job => {
+    console.log(`Job ${job.id} completed!`);
+  });
 
-flowWorker.on('failed', (job, err) => {
-  console.log(`Job ${job?.id} failed: ${err.message}`);
-});
+  flowWorker.on('failed', (job, err) => {
+    console.log(`Job ${job?.id} failed: ${err.message}`);
+  });
+} else {
+  console.warn('[Worker] Flow Worker NOT started (Serverless or No Connection)');
+}

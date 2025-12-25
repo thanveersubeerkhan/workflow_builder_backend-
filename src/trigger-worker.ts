@@ -7,7 +7,8 @@ import { runTrigger } from './engine.js';
  * Trigger Polling Worker
  * Scans all flows for triggers and starts flows if new data is detected.
  */
-export const triggerWorker = new Worker('trigger-polling', async (job) => {
+const connection = createWorkerConnection();
+export const triggerWorker = connection ? new Worker('trigger-polling', async (job) => {
   const { flowId } = job.data as { flowId?: string };
   
   if (flowId) {
@@ -81,7 +82,12 @@ export const triggerWorker = new Worker('trigger-polling', async (job) => {
   }
   
   console.log('--- Trigger Scan Completed ---');
-}, { connection: createWorkerConnection() });
+}, { connection, skipVersionCheck: true }) : null;
+
+if (!triggerWorker) {
+    console.warn('[TriggerWorker] Trigger Worker NOT started (Serverless or No Connection)');
+}
+
 
 // Schedule polling every 30 seconds for responsive triggers
 export async function scheduleTriggerJob() {
