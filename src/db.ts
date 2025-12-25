@@ -127,3 +127,43 @@ export async function getAllIntegrations(): Promise<GoogleIntegration[]> {
     refresh_token: decrypt(row.refresh_token)
   }));
 }
+
+/**
+ * Generates a consistent 32-bit signed integer hash for a string.
+ * Used for Postgres Advisory Locks which require numeric keys.
+ */
+function getNumericHash(str: string): number {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash |= 0; // Convert to 32bit integer
+    }
+    return hash;
+}
+
+/**
+ * Executes a function only after acquiring a Postgres Advisory Lock.
+ * If the lock is already held by another process, returns null.
+ * Ensures the lock is released even if the function fails.
+ */
+export async function withAdvisoryLock<T>(lockName: string, fn: () => Promise<T>): Promise<T | null> {
+    const key = getNumericHash(lockName);
+    const client = await pool.connect();
+    try {
+        const lockRes = await client.query('SELECT pg_try_advisory_lock($1) as acquired', [key]);
+        if (!lockRes.rows[0].acquired) {
+            return null;
+        }
+        try {
+            return await fn();
+        } finally {
+            await client.query('SELECT pg_advisory_unlock($1)', [key]);
+        }
+    } catch (err) {
+        console.error(`[DB] Advisory Lock Error (${lockName}):`, err);
+        throw err;
+    } finally {
+        client.release();
+    }
+}

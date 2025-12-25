@@ -1,6 +1,5 @@
 import { performTriggerScan } from './trigger-worker.js';
 import { performTokenRefresh } from './refresh-worker.js';
-import { closeRedisConnection } from './queues.js';
 import { pool } from './db.js';
 
 /**
@@ -47,7 +46,6 @@ Token Refresh:   Every ${REFRESH_INTERVAL / 60000}m
 // Graceful Shutdown
 const shutdown = async (signal: string) => {
     console.log(`\n[Worker] ${signal} received. Shutting down...`);
-    await closeRedisConnection();
     await pool.end();
     process.exit(0);
 };

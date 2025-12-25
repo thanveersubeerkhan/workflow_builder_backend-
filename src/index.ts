@@ -6,9 +6,9 @@ import { tokenRouter } from './tokens.js';
 import { disconnectRouter } from './disconnect.js';
 import { pool } from './db.js';
 import { runAction } from './engine.js';
-import { closeRedisConnection } from './queues.js';
 import { mapUIToDefinition } from './flow-mapper.js';
 import { executeFlow } from './worker.js';
+import { performTokenRefresh } from './refresh-worker.js';
 
 dotenv.config();
 
@@ -216,7 +216,6 @@ app.listen(PORT, () => {
 
 const shutdown = async (signal: string) => {
   console.log(`\n[Server] ${signal} received. Shutting down...`);
-  await closeRedisConnection();
   await pool.end();
   process.exit(0);
 };

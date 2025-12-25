@@ -1,7 +1,6 @@
-import { pool } from './db.js';
+import { pool, withAdvisoryLock } from './db.js';
 import { runTrigger } from './engine.js';
 import { executeFlow } from './worker.js';
-import { getRedisClient } from './queues.js';
 
 interface ScanOptions {
   flowId?: string;
@@ -21,77 +20,73 @@ export async function performTriggerScan(options: ScanOptions = {}) {
   }
 
   try {
-    let flows: any[] = [];
+    let query = 'SELECT * FROM flows WHERE is_active = true';
+    const params: any[] = [];
     
     if (flowId) {
-      const res = await pool.query("SELECT * FROM flows WHERE id = $1 AND is_active = true", [flowId]);
-      flows = res.rows;
-    } else {
-      const res = await pool.query("SELECT * FROM flows WHERE is_active = true");
-      flows = res.rows;
+      query += ' AND id = $1';
+      params.push(flowId);
     }
 
-    if (flows.length === 0) {
+    const flowsRes = await pool.query(query, params);
+    const flows = flowsRes.rows;
+
+    if (flows.length === 0 && !flowId) {
       console.log('[Trigger] No active flows found to scan.');
-      return { success: true, flowsScanned: 0 };
+      return { success: true, fireCount: 0 };
     }
 
     let fireCount = 0;
-    const redis = getRedisClient();
 
     for (const flow of flows) {
-      // 1. Try to acquire a lock for this flow to prevent multi-worker collisions
-      const lockKey = `lock:scan:flow:${flow.id}`;
-      const acquired = await redis.set(lockKey, 'locked', 'EX', 120, 'NX');
-      
-      if (!acquired) {
-        // Someone else is already scanning this flow
-        continue;
-      }
-
-      try {
-        const definition = flow.definition;
-        const trigger = definition.trigger;
-
-        if (!trigger) continue;
-
+      // Use Postgres Advisory Lock instead of Redis
+      await withAdvisoryLock(`scan:flow:${flow.id}`, async () => {
         try {
-          const result = await runTrigger({
-            userId: flow.user_id,
-            service: trigger.piece,
-            triggerName: trigger.name,
-            lastProcessedId: flow.last_trigger_data,
-            params: trigger.params
-          });
+          const definition = flow.definition;
+          const trigger = definition.trigger;
 
-          if (result && result.newLastId) {
-            console.log(`🎯 Trigger FIRE! [${trigger.name}] for flow ${flow.id}. New item: ${result.newLastId}`);
+          if (!trigger) return;
 
-            // 1. Update the last processed ID in DB immediately
-            await pool.query(
-              'UPDATE flows SET last_trigger_data = $1 WHERE id = $2',
-              [result.newLastId, flow.id]
-            );
-
-            // 2. Execute the flow directly
-            fireCount++;
-            await executeFlow({
-              flowId: flow.id,
+          try {
+            const result = await runTrigger({
               userId: flow.user_id,
-              definition: definition,
-              triggerData: result.data
+              service: trigger.piece,
+              triggerName: trigger.name,
+              lastProcessedId: flow.last_trigger_data,
+              params: trigger.params
             });
+
+            if (result && result.newLastId) {
+              console.log(`🎯 Trigger FIRE! [${trigger.name}] for flow ${flow.id}. New item: ${result.newLastId}`);
+
+              // 1. Update the last processed ID in DB immediately
+              await pool.query(
+                'UPDATE flows SET last_trigger_data = $1 WHERE id = $2',
+                [result.newLastId, flow.id]
+              );
+
+              // 2. Execute the flow directly
+              fireCount++;
+              await executeFlow({
+                flowId: flow.id,
+                userId: flow.user_id,
+                definition: definition,
+                triggerData: result.data
+              });
+            }
+          } catch (err: any) {
+            console.error(`[Trigger] Error checking trigger for flow ${flow.id}:`, err.message);
           }
-        } catch (err: any) {
-          console.error(`[Trigger] Error checking trigger for flow ${flow.id}:`, err.message);
+        } finally {
+          // The withAdvisoryLock utility handles releasing the lock
         }
-      } finally {
-        // Release the lock when done
-        await redis.del(lockKey);
-      }
+      });
     }
 
-    return { success: true, flowsScanned: flows.length, fires: fireCount };
+    if (!flowId) {
+      console.log(`[Trigger] Scan complete. Items fired: ${fireCount}`);
+    }
+    return { success: true, fireCount };
 
   } catch (error: any) {
     console.error('[Trigger] Scan Error:', error.message);
