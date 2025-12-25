@@ -6,11 +6,9 @@ import { tokenRouter } from './tokens.js';
 import { disconnectRouter } from './disconnect.js';
 import { pool } from './db.js';
 import { runAction } from './engine.js';
-import { closeRedisConnection, isServerless } from './queues.js';
+import { closeRedisConnection } from './queues.js';
 import { mapUIToDefinition } from './flow-mapper.js';
 import { executeFlow } from './worker.js';
-import { performTokenRefresh } from './refresh-worker.js';
-import { performTriggerScan } from './trigger-worker.js';
 
 dotenv.config();
 
@@ -27,34 +25,6 @@ app.use(express.json());
 app.use('/auth', authRouter);
 app.use('/api/tokens', tokenRouter);
 app.use('/api/disconnect', disconnectRouter);
-
-// --- Admin & Cron Endpoints (For Serverless/Vercel) ---
-
-/**
- * Trigger Scan Endpoint
- * Call this every minute via Vercel Cron to process active flows.
- */
-app.get('/api/cron/scan', async (req, res) => {
-    try {
-        const result = await performTriggerScan();
-        res.json(result);
-    } catch (error: any) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-/**
- * Token Refresh Endpoint
- * Call this every 10-15 minutes via Vercel Cron.
- */
-app.get('/api/cron/refresh', async (req, res) => {
-    try {
-        const result = await performTokenRefresh();
-        res.json(result);
-    } catch (error: any) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
 
 // --- Standard API Endpoints ---
 
@@ -185,18 +155,10 @@ app.patch('/api/flows/:flowId', async (req: express.Request, res: express.Respon
     if (result.rowCount === 0) return res.status(404).json({ error: 'Flow not found' });
     const updatedFlow = result.rows[0];
 
+    // Note: We no longer trigger a reactive scan here.
+    // The standalone worker will pick up the change within 5 seconds.
+
     res.json({ success: true, flow: updatedFlow });
-
-    // Immediate scan if activated (Fire and forget)
-    if (is_active === true || is_active === 'true') {
-        console.log(`[Flow] Flow ${flowId} activated. Running background scan...`);
-        // We set a tiny timeout to ensure the response is flushed before heavy work starts
-        setTimeout(() => {
-            performTriggerScan({ flowId }).catch(e => console.error('[Flow] Async scan error:', e.message));
-        }, 10);
-    }
-
-    return;
   } catch (error: any) {
     if (!res.headersSent) res.status(500).json({ error: error.message });
   }
@@ -221,7 +183,6 @@ app.post('/api/flows/:flowId/run', async (req, res) => {
 
     const flow = result.rows[0];
     
-    // Direct Execution instead of Queueing
     const runResult = await executeFlow({
       flowId: flow.id,
       userId: flow.user_id,
@@ -250,7 +211,7 @@ app.get('/api/connections/:userId', async (req, res) => {
 app.get('/health', (req, res) => res.send('OK'));
 
 app.listen(PORT, () => {
-  console.log(`🚀 Serverless-ready Backend running on port ${PORT}`);
+  console.log(`🚀 API Server running on port ${PORT}`);
 });
 
 const shutdown = async (signal: string) => {
