@@ -156,6 +156,51 @@ io.on('connection', (socket) => {
       }
   });
 
+  socket.on('run-flow', async (flowId, callback) => {
+      console.log(`Socket ${socket.id} requested run for flow ${flowId}`);
+      try {
+        const result = await pool.query('SELECT * FROM flows WHERE id = $1', [flowId]);
+        if (result.rowCount === 0) {
+             if (callback) callback({ error: 'Flow not found' });
+             return;
+        }
+        const flow = result.rows[0];
+
+        // Run asynchronously but return immediate acknowledgment? 
+        // Or wait for result? User probably wants to know it started.
+        // Let's run it and await result to return final status, 
+        // but interim events are via room.
+        
+        const runResult = await executeFlow({
+            flowId: flow.id,
+            userId: flow.user_id,
+            definition: flow.definition,
+            onEvent: (event, data) => {
+                io.to(`flow:${flow.id}`).emit(event, data);
+            }
+        });
+
+        if (callback) callback(runResult);
+
+      } catch (error: any) {
+          console.error("Socket run flow error:", error);
+          if (callback) callback({ success: false, error: error.message });
+      }
+  });
+
+  // Relay event from Worker -> Server -> Client
+  socket.on('worker-relay', (payload) => {
+      // payload: { room, event, data }
+      // Security: In a real app, verify some secret/token from the worker.
+      // For now, we trust the internal connection.
+      const { room, event, data } = payload;
+      console.log(`[Socket Relay] Received '${event}' for room '${room}' from worker`);
+      if (room && event) {
+          io.to(room).emit(event, data);
+          console.log(`[Socket Relay] Broadcasted to room '${room}'`);
+      }
+  });
+
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
   });
@@ -230,7 +275,10 @@ app.post('/api/flows/:flowId/run', async (req, res) => {
     const runResult = await executeFlow({
       flowId: flow.id,
       userId: flow.user_id,
-      definition: flow.definition
+      definition: flow.definition,
+      onEvent: (event, data) => {
+          io.to(`flow:${flow.id}`).emit(event, data);
+      }
     });
 
     res.json(runResult);

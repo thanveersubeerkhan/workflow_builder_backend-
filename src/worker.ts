@@ -8,14 +8,16 @@ interface ExecuteFlowArgs {
   userId: string;
   definition: FlowDefinition;
   triggerData?: any;
+  onEvent?: (event: string, data: any) => void;
 }
 
 /**
  * Directly executes a flow step-by-step.
  * This is serverless-friendly as it doesn't rely on background workers.
  */
-export async function executeFlow({ flowId, userId, definition, triggerData }: ExecuteFlowArgs) {
+export async function executeFlow({ flowId, userId, definition, triggerData, onEvent }: ExecuteFlowArgs) {
   console.log(`[Executor] Starting Flow: ${flowId} for User: ${userId}`);
+  console.log(`[Executor] Definition Trigger:`, JSON.stringify(definition.trigger));
 
   // 1. Create a run record
   const runRes = await pool.query(
@@ -27,10 +29,42 @@ export async function executeFlow({ flowId, userId, definition, triggerData }: E
   const context: any = { steps: { trigger: { data: triggerData } } };
   const logs: string[] = [];
 
+  // Emit Trigger Events (Start -> Finish) for UI feedback
+  if (onEvent && definition.trigger && definition.trigger.nodeId) {
+      console.log(`[Executor] Emitting Trigger Start for ${definition.trigger.nodeId}`);
+      onEvent('step-run-start', {
+          nodeId: definition.trigger.nodeId,
+          status: 'running'
+      });
+
+      // Small delay to let the UI show "Processing..." state (visual feedback)
+      await new Promise(r => setTimeout(r, 800));
+
+      console.log(`[Executor] Emitting Trigger Success for ${definition.trigger.nodeId}`);
+      onEvent('step-run-finish', {
+          nodeId: definition.trigger.nodeId,
+          status: 'success',
+          output: triggerData || {},
+          duration: 0
+      });
+  } else {
+      console.log(`[Executor] Skipping Trigger Event. Trigger: ${!!definition.trigger}, NodeId: ${definition.trigger?.nodeId}`);
+  }
+
   try {
     for (const step of definition.steps) {
       const stepStartTime = Date.now();
-      logs.push(`[${new Date().toISOString()}] Executing Step: ${step.name} (${step.piece}.${step.action})`);
+      logs.push(`[${new Date().toISOString()}] Executing Step: ${step.displayName || step.name} (${step.piece}.${step.action})`);
+      
+      if (onEvent) {
+          onEvent('step-run-start', {
+              nodeId: step.name, // Assuming step.name maps to nodeId or we need to look it up? definition.steps usually has ids or we need to ensure mapping. 
+              // Actually step.name in definition might be the label or ID. Let's assume ID for now or Label. 
+              // If step definition comes from flow-mapper, let's verify mapUIToDefinition later.
+              // For now, let's assume step.name is the ID used in Frontend nodes.
+              status: 'running' 
+          });
+      }
       
       try {
         const resolvedParams = resolveVariables(step.params, context);
@@ -52,6 +86,15 @@ export async function executeFlow({ flowId, userId, definition, triggerData }: E
           [JSON.stringify(logs), JSON.stringify(context.steps), runId]
         );
 
+        if (onEvent) {
+            onEvent('step-run-finish', {
+                nodeId: step.name,
+                status: 'success',
+                output: result,
+                duration
+            });
+        }
+
       } catch (stepError: any) {
         const errorDetail = (stepError as any).response?.data 
           ? JSON.stringify((stepError as any).response.data) 
@@ -66,6 +109,16 @@ export async function executeFlow({ flowId, userId, definition, triggerData }: E
         );
         
         console.error(`[Executor] Flow ${flowId} failed at step ${step.name}:`, errorDetail);
+        
+        if (onEvent) {
+            onEvent('step-run-finish', {
+                nodeId: step.name,
+                status: 'error',
+                output: { error: errorDetail },
+                duration: Date.now() - stepStartTime
+            });
+        }
+
         return { success: false, error: failureLog, runId };
       }
     }

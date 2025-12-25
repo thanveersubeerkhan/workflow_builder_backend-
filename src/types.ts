@@ -27,12 +27,22 @@ export type TriggerFunction = (args: { auth: any; lastProcessedId?: any; params?
 
 export interface FlowStep {
   name: string;
+  displayName?: string; // Human readable name (e.g. "Gmail Send Email")
   piece: string;
   action: string;
   params: any;
 }
 
+export interface FlowTrigger {
+  name: string;
+  displayName?: string;
+  nodeId?: string; // Critical for matching UI
+  piece: string;
+  params: any;
+}
+
 export interface FlowDefinition {
+  trigger?: FlowTrigger;
   steps: FlowStep[];
 }
 

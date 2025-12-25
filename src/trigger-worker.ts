@@ -1,6 +1,18 @@
 import { pool, withAdvisoryLock } from './db.js';
 import { runTrigger } from './engine.js';
 import { executeFlow } from './worker.js';
+import { io } from 'socket.io-client';
+
+const SOCKET_URL = `http://localhost:${process.env.PORT || 3000}`;
+const socket = io(SOCKET_URL);
+
+socket.on('connect', () => {
+    console.log('[Worker] Connected to Socket Relay');
+});
+
+socket.on('connect_error', (err) => {
+    // console.error('[Worker] Socket connection error:', err.message);
+});
 
 interface ScanOptions {
   flowId?: string;
@@ -71,7 +83,15 @@ export async function performTriggerScan(options: ScanOptions = {}) {
                 flowId: flow.id,
                 userId: flow.user_id,
                 definition: definition,
-                triggerData: result.data
+                triggerData: result.data,
+                onEvent: (event, data) => {
+                    // Relay to main server to broadcast to frontend
+                    socket.emit('worker-relay', {
+                        room: `flow:${flow.id}`,
+                        event,
+                        data
+                    });
+                }
               });
             }
           } catch (err: any) {
