@@ -42,19 +42,25 @@ import { workflowExecutor } from "./workflow-executor.js";
 // });
 
 // src/trigger/workflow-scanner.ts
+// src/trigger/workflow-scanner.ts
 export const workflowScanner = schedules.task({
   id: "workflow-scanner",
   cron: "* * * * *", // Run every minute
   run: async (payload) => {
-    // Run 12 times (12 * 5s = 60 seconds)
-    for (let i = 0; i < 12; i++) {
-        await performTriggerScan({}, async (data) => {
-            await workflowExecutor.trigger(data);
-        });
+    let totalFireCount = 0;
 
-        if (i < 11) {
-            await wait.for({ seconds: 5 }); // Pause for 5 seconds
-        }
+    for (let i = 0; i < 12; i++) {
+      const result = await performTriggerScan({}, async (data) => {
+        await workflowExecutor.trigger(data);
+      });
+
+      totalFireCount += result.fireCount; // Keep track of the total
+
+      if (i < 11) {
+        return { totalFireCount };
+      }
     }
+
+
   },
 });
