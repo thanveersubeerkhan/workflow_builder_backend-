@@ -5,7 +5,8 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "worker": "tsx src/standalone-worker.ts",
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch src/socket.ts",
+    "dev1": "tsx watch src/socket.ts",
     "build": "tsc",
     "db:setup": "tsx src/setup-db.ts",
     "test:full": "tsx src/master-test.ts",
@@ -29,6 +30,7 @@
   "description": "",
   "dependencies": {
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/socket.io": "^3.0.1",
     "axios": "^1.13.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
@@ -37,7 +39,8 @@
     "ioredis": "^5.8.2",
     "jsonwebtoken": "^9.0.3",
     "node-cron": "^4.2.1",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "socket.io": "^4.8.3"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
