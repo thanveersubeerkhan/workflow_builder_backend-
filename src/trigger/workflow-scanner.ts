@@ -57,10 +57,10 @@ export const workflowScanner = schedules.task({
       totalFireCount += result.fireCount; // Keep track of the total
 
       if (i < 11) {
-        return { totalFireCount };
+        await wait.for({ seconds: 5 }); // Wait 5s
       }
     }
 
-
+    return { totalFireCount }; // Return final results
   },
 });
