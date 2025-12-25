@@ -57,25 +57,33 @@ export const gmailPiece: Piece = {
 
       const messages = res.data.messages || [];
       
+      // Handle lastProcessedId as string (backward compatibility) or object
+      let effectiveLastId: string | undefined;
+      if (typeof lastProcessedId === 'string') {
+        effectiveLastId = lastProcessedId;
+      } else if (lastProcessedId && typeof lastProcessedId === 'object') {
+        effectiveLastId = lastProcessedId.lastMessageId || lastProcessedId.runId; // runId as fallback if users use that key
+      }
+
       // If no messages or the latest is already processed, nothing to do
-      if (messages.length === 0 || messages[0].id === lastProcessedId) {
+      if (messages.length === 0 || (effectiveLastId && messages[0].id === effectiveLastId)) {
         return null;
       }
 
-      // Find the first message that IS our lastProcessedId
+      // Find the first message that IS our effectiveLastId
       // and take the one right AFTER it in the list (which is the next newest)
       // or if not found, just take the oldest in the 5-item window
       let targetMessage = messages[0];
       
-      if (lastProcessedId) {
-        const lastIdx = messages.findIndex(m => m.id === lastProcessedId);
+      if (effectiveLastId) {
+        const lastIdx = messages.findIndex(m => m.id === effectiveLastId);
         if (lastIdx > 0) {
-            // There are messages between messages[0] and lastProcessedId
-            // We pick the one right before lastProcessedId in the array (idx - 1)
+            // There are messages between messages[0] and effectiveLastId
+            // We pick the one right before effectiveLastId in the array (idx - 1)
             // so we process them in chronological order
             targetMessage = messages[lastIdx - 1];
         } else if (lastIdx === -1) {
-            // lastProcessedId not in the 5-item window? 
+            // effectiveLastId not in the 5-item window? 
             // Default to the most recent one to reset the marker
             targetMessage = messages[0];
         }
@@ -87,7 +95,7 @@ export const gmailPiece: Piece = {
       });
 
       return {
-        newLastId: targetMessage.id,
+        newLastId: { lastMessageId: targetMessage.id },
         data: details.data
       };
     }

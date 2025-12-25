@@ -90,7 +90,7 @@ interface RunTriggerArgs {
   userId: string;
   service: string;
   triggerName: string;
-  lastProcessedId?: string | null;
+  lastProcessedId?: any;
   params?: any;
 }
 

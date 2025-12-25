@@ -7,7 +7,7 @@ export const schedulePiece: Piece = {
     schedule: async ({ lastProcessedId, params }) => {
       let intervalSeconds = 300; // Default 5 minutes
 
-      console.log(`[Schedule Debug] Params: ${JSON.stringify(params)} | LastId: ${lastProcessedId}`);
+      console.log(`[Schedule Debug] Params: ${JSON.stringify(params)} | LastId: ${JSON.stringify(lastProcessedId)}`);
 
       if (params) {
         if (params.intervalType === 'seconds' && params.intervalSeconds) {
@@ -28,26 +28,24 @@ export const schedulePiece: Piece = {
       
       console.log(`[Schedule Debug] Interval: ${intervalSeconds}s | Required Wait: ${intervalMs}ms`);
 
-      if (!lastProcessedId) {
-        // First run: fire immediately and record timestamp
-        return {
-          newLastId: now.toString(),
-          data: { firedAt: new Date(now).toISOString() }
-        };
+      let lastRun: number | null = null;
+      if (typeof lastProcessedId === 'string' && lastProcessedId) {
+        lastRun = parseInt(lastProcessedId, 10);
+      } else if (lastProcessedId && typeof lastProcessedId === 'object' && lastProcessedId.time) {
+        lastRun = parseInt(lastProcessedId.time, 10);
       }
 
-      const lastRun = parseInt(lastProcessedId, 10);
-      if (isNaN(lastRun)) {
-        // Fallback for invalid lastProcessedId
+      if (lastRun === null || isNaN(lastRun)) {
+        // First run or invalid data: fire immediately and record timestamp
         return {
-          newLastId: now.toString(),
+          newLastId: { time: now.toString(), runId: "" },
           data: { firedAt: new Date(now).toISOString() }
         };
       }
 
       if (now - lastRun >= intervalMs) {
         return {
-          newLastId: now.toString(),
+          newLastId: { time: now.toString(), runId: "" },
           data: { firedAt: new Date(now).toISOString() }
         };
       }

@@ -38,7 +38,7 @@ async function setup() {
       name TEXT NOT NULL,
       definition JSONB NOT NULL,
       ui_definition JSONB DEFAULT '{"nodes": [], "edges": []}',
-      last_trigger_data TEXT,
+      last_trigger_data JSONB DEFAULT '{"time":"", "runId":""}',
       is_active BOOLEAN DEFAULT true,
       created_at TIMESTAMP DEFAULT now(),
       updated_at TIMESTAMP DEFAULT now()
