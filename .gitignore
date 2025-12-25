@@ -33,3 +33,6 @@ Thumbs.db
 # Database (if local)
 *.sqlite
 *.sqlite-journal
+
+# Trigger.dev
+.trigger/
