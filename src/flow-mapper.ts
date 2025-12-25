@@ -41,6 +41,8 @@ export function mapUIToDefinition(ui: UIDefinition) {
   const trigger = {
     piece: pieceName,
     name: mapTriggerName(pieceName, triggerNode.data?.actionId || 'trigger'),
+    displayName: `${triggerNode.data?.appName || 'Trigger'} ${triggerNode.data?.actionId || 'Event'}`,
+    nodeId: triggerNode.id, // Include Node ID for live logs
     params: triggerNode.data?.params || {}
   };
 
@@ -60,7 +62,8 @@ export function mapUIToDefinition(ui: UIDefinition) {
 
     const stepPiece = mapPieceName(nextNode.data?.icon || nextNode.data?.appName);
     steps.push({
-      name: `${nextNode.data?.appName || 'Step'}_${nextNode.data?.actionId || 'Action'}`,
+      name: nextNode.id, // Critical: Must match UI Node ID for live logs
+      displayName: `${nextNode.data?.appName || 'Step'} ${nextNode.data?.actionId || 'Action'}`,
       piece: stepPiece,
       action: mapActionName(stepPiece, nextNode.data?.actionId),
       params: nextNode.data?.params || {}
