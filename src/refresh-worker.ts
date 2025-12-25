@@ -1,12 +1,22 @@
 import { getAllIntegrations, saveIntegration } from './db.js';
 import { createOAuthClient } from './google.js';
+import { getRedisClient } from './queues.js';
 
 /**
  * Proactively refreshes Google OAuth tokens that are near expiry.
  */
 export async function performTokenRefresh() {
   console.log('[Refresh] Starting Proactive Token Refresh...');
+  const redis = getRedisClient();
+  const lockKey = 'lock:token-refresh:global';
   
+  // Try to acquire global refresh lock for 10 minutes
+  const acquired = await redis.set(lockKey, 'locked', 'EX', 600, 'NX');
+  if (!acquired) {
+    console.log('[Refresh] Another worker is already refreshing. Skipping.');
+    return { success: true, totalRefreshed: 0, skipped: true };
+  }
+
   try {
     const integrations = await getAllIntegrations();
     const now = Date.now();
@@ -45,5 +55,7 @@ export async function performTokenRefresh() {
   } catch (error: any) {
     console.error('[Refresh] Error:', error.message);
     throw error;
+  } finally {
+    await redis.del(lockKey);
   }
 }

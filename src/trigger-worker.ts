@@ -1,6 +1,7 @@
 import { pool } from './db.js';
 import { runTrigger } from './engine.js';
 import { executeFlow } from './worker.js';
+import { getRedisClient } from './queues.js';
 
 interface ScanOptions {
   flowId?: string;
@@ -36,42 +37,57 @@ export async function performTriggerScan(options: ScanOptions = {}) {
     }
 
     let fireCount = 0;
+    const redis = getRedisClient();
 
     for (const flow of flows) {
-      const definition = flow.definition;
-      const trigger = definition.trigger;
-
-      if (!trigger) continue;
+      // 1. Try to acquire a lock for this flow to prevent multi-worker collisions
+      const lockKey = `lock:scan:flow:${flow.id}`;
+      const acquired = await redis.set(lockKey, 'locked', 'EX', 120, 'NX');
+      
+      if (!acquired) {
+        // Someone else is already scanning this flow
+        continue;
+      }
 
       try {
-        const result = await runTrigger({
-          userId: flow.user_id,
-          service: trigger.piece,
-          triggerName: trigger.name,
-          lastProcessedId: flow.last_trigger_data,
-          params: trigger.params
-        });
+        const definition = flow.definition;
+        const trigger = definition.trigger;
 
-        if (result && result.newLastId) {
-          console.log(`🎯 Trigger FIRE! [${trigger.name}] for flow ${flow.id}. New item: ${result.newLastId}`);
+        if (!trigger) continue;
 
-          // 1. Update the last processed ID in DB immediately
-          await pool.query(
-            'UPDATE flows SET last_trigger_data = $1 WHERE id = $2',
-            [result.newLastId, flow.id]
-          );
-
-          // 2. Execute the flow directly (synchronous in serverless context)
-          fireCount++;
-          await executeFlow({
-            flowId: flow.id,
+        try {
+          const result = await runTrigger({
             userId: flow.user_id,
-            definition: definition,
-            triggerData: result.data
+            service: trigger.piece,
+            triggerName: trigger.name,
+            lastProcessedId: flow.last_trigger_data,
+            params: trigger.params
           });
+
+          if (result && result.newLastId) {
+            console.log(`🎯 Trigger FIRE! [${trigger.name}] for flow ${flow.id}. New item: ${result.newLastId}`);
+
+            // 1. Update the last processed ID in DB immediately
+            await pool.query(
+              'UPDATE flows SET last_trigger_data = $1 WHERE id = $2',
+              [result.newLastId, flow.id]
+            );
+
+            // 2. Execute the flow directly
+            fireCount++;
+            await executeFlow({
+              flowId: flow.id,
+              userId: flow.user_id,
+              definition: definition,
+              triggerData: result.data
+            });
+          }
+        } catch (err: any) {
+          console.error(`[Trigger] Error checking trigger for flow ${flow.id}:`, err.message);
         }
-      } catch (err: any) {
-        console.error(`[Trigger] Error checking trigger for flow ${flow.id}:`, err.message);
+      } finally {
+        // Release the lock when done
+        await redis.del(lockKey);
       }
     }
 
