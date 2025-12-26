@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "@trigger.dev/sdk": "^4.3.1",
+    "axios": "^1.13.2"
+  },
+  "devDependencies": {
+    "@trigger.dev/build": "^4.3.1"
+  }
+}
