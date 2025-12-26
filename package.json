@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "tsx src/socket.ts",
-    "worker": "tsx src/standalone-worker.ts",
-    "trigger": "tsx src/trigger-worker.ts",
+    "start": "node dist/socket.js",
+    "worker": "node dist/standalone-worker.js",
+    "trigger": "node dist/trigger-worker.js",
     "dev": "tsx watch src/socket.ts",
     "build": "tsc",
     "db:setup": "tsx src/setup-db.ts",
