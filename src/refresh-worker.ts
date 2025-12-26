@@ -1,62 +1,75 @@
-import { getAllIntegrations, saveIntegration, withAdvisoryLock } from './db.js';
+import { getAllIntegrations, getIntegration, saveIntegration, withAdvisoryLock } from './db.js';
 import { createOAuthClient } from './google.js';
+import { tasks } from "@trigger.dev/sdk/v3";
+
+interface RefreshOptions {
+  userId?: string;
+  service?: string;
+}
 
 /**
- * Proactively refreshes Google OAuth tokens that are near expiry.
- * Designed to be called by a Cron job or a manual trigger.
+ * Proactively refreshes Google OAuth tokens.
+ * Refactored for "Double-Loopback" architecture.
  */
-export async function performTokenRefresh() {
-  console.log('[Refresh] Starting Proactive Token Refresh...');
-  
-  // Use Postgres Advisory Lock instead of Redis
-  const result = await withAdvisoryLock('token-refresh:global', async () => {
+export async function performTokenRefresh(options: RefreshOptions = {}) {
+  const { userId, service } = options;
+
+  // CASE 1: Targeted Refresh (The Execution Muscle)
+  if (userId && service) {
+    console.log(`[Refresh] 🔄 Targeted Refresh: ${userId} - ${service}`);
+    const integration = await getIntegration(userId, service);
+    if (!integration) throw new Error(`Integration not found for ${userId}/${service}`);
+
+    const client = createOAuthClient();
+    client.setCredentials({ refresh_token: integration.refresh_token });
+    const { credentials } = await client.refreshAccessToken();
+
+    await saveIntegration({
+      user_id: userId,
+      service,
+      refresh_token: integration.refresh_token,
+      access_token: credentials.access_token ?? undefined,
+      expiry_date: credentials.expiry_date ?? undefined,
+      scopes: integration.scopes
+    });
+    console.log(`[Refresh] ✅ Successfully refreshed ${service} for ${userId}`);
+    return { success: true };
+  }
+
+  // CASE 2: Global Scan (The Brain)
+  console.log('[Refresh] ⏰ Starting Global Expiry Scan...');
+  return await withAdvisoryLock('token-refresh:global', async () => {
     try {
       const integrations = await getAllIntegrations();
       const now = Date.now();
-      let refreshCount = 0;
+      const buffer = 15 * 60 * 1000; // 15 mins
+      let dispatchCount = 0;
 
       for (const integration of integrations) {
-        // Check if it's expiring in the next 15 minutes
-        const buffer = 15 * 60 * 1000;
         if (integration.expiry_date && (Number(integration.expiry_date) < now + buffer)) {
-          console.log(`[Refresh] Refreshing: ${integration.user_id} - ${integration.service}`);
+          console.log(`[Refresh] Found expiring token: ${integration.user_id} - ${integration.service}. Dispatching to queue...`);
           
-          const client = createOAuthClient();
-          client.setCredentials({ refresh_token: integration.refresh_token });
-
+          // DISPATCH to Trigger.dev Queue
+          console.log(`[Refresh] 🚀 Dispatching token-refresh-executor for ${integration.user_id}...`);
           try {
-            const { credentials } = await client.refreshAccessToken();
-
-            await saveIntegration({
-              user_id: integration.user_id,
-              service: integration.service,
-              refresh_token: integration.refresh_token,
-              access_token: credentials.access_token ?? undefined,
-              expiry_date: credentials.expiry_date ?? undefined,
-              scopes: integration.scopes
+            await tasks.trigger("token-refresh-executor", {
+              userId: integration.user_id,
+              service: integration.service
             });
-            
-            refreshCount++;
-            console.log(`[Refresh] ✅ Successfully refreshed ${integration.service}`);
-          } catch (err: any) {
-            console.error(`[Refresh] ❌ Failed to refresh ${integration.service} for ${integration.user_id}:`, err.message);
-            
-            // If the token is invalid or revoked, we should probably mark it or notify the user
-            if (err.message.includes('invalid_grant')) {
-              console.warn(`[Refresh] ⚠️ Token revoked or expired for ${integration.user_id}. User needs to re-authenticate.`);
-              // Optional: Mark as broken in DB
-              // await pool.query('UPDATE google_integrations SET refresh_token = NULL WHERE user_id = $1 AND service = $2', [integration.user_id, integration.service]);
-            }
+            console.log(`[Refresh] ✅ Dispatch successful.`);
+          } catch (triggerErr: any) {
+            console.error(`[Refresh] ❌ Dispatch failed:`, triggerErr.message);
           }
+
+          dispatchCount++;
         }
       }
       
-      return { success: true, totalRefreshed: refreshCount, skipped: false };
+      console.log(`[Refresh] Scan complete. Dispatched ${dispatchCount} refresh tasks.`);
+      return { success: true, totalDispatched: dispatchCount };
     } catch (error: any) {
-      console.error('[Refresh] Error:', error.message);
+      console.error('[Refresh] Scan Error:', error.message);
       throw error;
     }
   });
-
-  return result || { success: true, totalRefreshed: 0, skipped: true };
 }

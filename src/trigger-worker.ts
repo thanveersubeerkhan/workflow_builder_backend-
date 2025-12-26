@@ -1,56 +1,49 @@
 import { pool, withAdvisoryLock } from './db.js';
 import { runTrigger } from './engine.js';
-import { executeFlow } from './worker.js';
-import axios from 'axios';
-
-const SOCKET_SERVER_URL = process.env.SOCKET_URL || `http://localhost:${process.env.PORT || 3000}`;
+import { tasks } from "@trigger.dev/sdk/v3";
 
 interface ScanOptions {
   flowId?: string;
 }
 
 /**
- * Performs a scan for active triggers and executes flows directly.
- * Designed to be called by a Cron job or a manual trigger.
+ * Performs a high-scale parallel scan for active triggers.
+ * Refactored for "Double-Loopback" architecture.
  */
-export async function performTriggerScan(options: ScanOptions = {}, onTriggerFire?: (data: { flowId: string, userId: string, definition: any, triggerData: any }) => Promise<void>) {
+export async function performTriggerScan(options: ScanOptions = {}) {
   const { flowId } = options;
 
-  if (flowId) {
-    console.log(`[Trigger] ⚡ Scanning Specific Flow: ${flowId}`);
-  } else {
-    console.log('[Trigger] ⏰ Starting Global Trigger Scan...');
-  }
-
   try {
+    // 1. Fetch active flows
     let query = 'SELECT * FROM flows WHERE is_active = true';
     const params: any[] = [];
-    
     if (flowId) {
       query += ' AND id = $1';
       params.push(flowId);
     }
-
     const flowsRes = await pool.query(query, params);
     const flows = flowsRes.rows;
 
-    if (flows.length === 0 && !flowId) {
-      console.log('[Trigger] No active flows found to scan.');
+    if (flows.length === 0) {
+      console.log('[Scanner] No active flows to scan.');
       return { success: true, fireCount: 0 };
     }
 
-    let fireCount = 0;
+    console.log(`[Scanner] ⏰ Scanning ${flows.length} flow(s)...`);
 
-    for (const flow of flows) {
-      // Use Postgres Advisory Lock instead of Redis
-      await withAdvisoryLock(`scan:flow:${flow.id}`, async () => {
-        try {
-          const definition = flow.definition;
-          const trigger = definition.trigger;
+    // 2. Parallel Scanning with Concurrency Limit (Batching)
+    const BATCH_SIZE = 10;
+    let totalFired = 0;
 
-          if (!trigger) return;
-
+    for (let i = 0; i < flows.length; i += BATCH_SIZE) {
+      const batch = flows.slice(i, i + BATCH_SIZE);
+      const results = await Promise.all(batch.map(async (flow) => {
+        return await withAdvisoryLock(`scan:flow:${flow.id}`, async () => {
           try {
+            const definition = flow.definition;
+            const trigger = definition.trigger;
+            if (!trigger) return false;
+
             const result = await runTrigger({
               userId: flow.user_id,
               service: trigger.piece,
@@ -60,58 +53,44 @@ export async function performTriggerScan(options: ScanOptions = {}, onTriggerFir
             });
 
             if (result && result.newLastId) {
-              console.log(`🎯 Trigger FIRE! [${trigger.name}] for flow ${flow.id}. New item: ${typeof result.newLastId === 'object' ? JSON.stringify(result.newLastId) : result.newLastId}`);
+              console.log(`🎯 Trigger FIRE! [${trigger.name}] for flow ${flow.id}`);
 
-              // 1. Update the last processed ID in DB immediately
+              // Update DB immediately to prevent double-triggering in next scan
               await pool.query(
                 'UPDATE flows SET last_trigger_data = $1 WHERE id = $2',
                 [result.newLastId, flow.id]
               );
 
-              fireCount++;
-              // 2. Execute the flow (either via callback or directly)
-              if (onTriggerFire) {
-                await onTriggerFire({
+              // DISPATCH to Trigger.dev Queue (The Muscle)
+              console.log(`[Scanner] 🚀 Dispatching workflow-executor for flow ${flow.id}...`);
+              try {
+                const triggerHandle = await tasks.trigger("workflow-executor", {
                   flowId: flow.id,
                   userId: flow.user_id,
                   definition: definition,
                   triggerData: result.data
                 });
-              } else {
-                await executeFlow({
-                  flowId: flow.id,
-                  userId: flow.user_id,
-                  definition: definition,
-                  triggerData: result.data,
-                  onEvent: (event, data) => {
-                      // Use HTTP relay instead of Socket.io client
-                      axios.post(`${SOCKET_SERVER_URL}/api/worker-relay`, {
-                          room: `flow:${flow.id}`,
-                          event,
-                          data
-                      }).catch(err => {
-                          console.error(`[Worker] Failed to relay event ${event} via HTTP:`, err.message);
-                      });
-                  }
-                });
+                console.log(`[Scanner] ✅ Dispatched successfully. Handle: ${triggerHandle.id}`);
+              } catch (triggerErr: any) {
+                console.error(`[Scanner] ❌ Failed to dispatch to Trigger.dev:`, triggerErr.message);
               }
+
+              return true;
             }
           } catch (err: any) {
-            console.error(`[Trigger] Error checking trigger for flow ${flow.id}:`, err.message);
+            console.error(`[Scanner] Error in flow ${flow.id}:`, err.message);
           }
-        } finally {
-          // The withAdvisoryLock utility handles releasing the lock
-        }
-      });
+          return false;
+        });
+      }));
+      totalFired += results.filter(Boolean).length;
     }
 
-    if (!flowId) {
-      console.log(`[Trigger] Scan complete. Items fired: ${fireCount}`);
-    }
-    return { success: true, fireCount };
+    console.log(`[Scanner] Scan complete. Total items fired: ${totalFired}`);
+    return { success: true, fireCount: totalFired };
 
   } catch (error: any) {
-    console.error('[Trigger] Scan Error:', error.message);
+    console.error('[Scanner] Fatal Error:', error.message);
     throw error;
   }
 }

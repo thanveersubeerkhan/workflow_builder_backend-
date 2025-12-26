@@ -11,6 +11,7 @@ import { runAction } from './engine.js';
 import { mapUIToDefinition } from './flow-mapper.js';
 import { executeFlow } from './worker.js';
 import { performTokenRefresh } from './refresh-worker.js';
+import { performTriggerScan } from './trigger-worker.js';
 
 dotenv.config();
 
@@ -304,6 +305,86 @@ app.post('/api/worker-relay', (req, res) => {
   io.to(room).emit(event, data);
   
   res.json({ success: true });
+});
+
+// --- Internal Endpoints (Double-Loopback) ---
+
+/**
+ * Endpoint for Trigger.dev Scheduler (hits this every 5s)
+ * Kicks off a parallel scan for fire conditions.
+ */
+app.post('/api/internal/scan-trigger', async (req, res) => {
+  console.log('[Internal] ⏰ Received scan-trigger request');
+  
+  // Fire and forget (Non-blocking)
+  performTriggerScan()
+    .catch(err => console.error('[Internal] Scan Error:', err.message));
+  
+  res.status(202).json({ success: true, message: 'Scan started asynchronously' });
+});
+
+/**
+ * Endpoint for Trigger.dev Executor (The Muscle)
+ * Runs the actual flow engine logic.
+ */
+app.post('/api/internal/execute-flow', async (req, res) => {
+  const { flowId, userId, definition, triggerData } = req.body;
+  
+  if (!flowId || !userId || !definition) {
+    return res.status(400).json({ error: 'Missing required fields: flowId, userId, definition' });
+  }
+
+  console.log(`[Internal] 🚀 Executing Flow: ${flowId}`);
+
+  // Fire and forget (Non-blocking)
+  executeFlow({
+    flowId,
+    userId,
+    definition,
+    triggerData,
+    onEvent: (event, data) => {
+      // Broadcast to Socket.io room
+      io.to(`flow:${flowId}`).emit(event, data);
+    }
+  }).catch(err => {
+    console.error(`[Internal] Error executing flow ${flowId}:`, err.message);
+  });
+
+  res.status(202).json({ success: true, message: 'Execution started asynchronously' });
+});
+
+/**
+ * Endpoint for Trigger.dev Refresh Scheduler (hits this every 20m)
+ * Finds tokens expiring in < 15m and dispatches them to the queue.
+ */
+app.post('/api/internal/refresh-tokens-scan', async (req, res) => {
+  console.log('[Internal] ⏰ Received refresh-tokens-scan request');
+  
+  // Fire and forget (Non-blocking)
+  performTokenRefresh()
+    .catch(err => console.error('[Internal] Refresh Scan Error:', err.message));
+  
+  res.status(202).json({ success: true, message: 'Refresh scan started asynchronously' });
+});
+
+/**
+ * Endpoint for Trigger.dev Refresh Executor
+ * Performs the actual OAuth refresh for a specific integration.
+ */
+app.post('/api/internal/perform-token-refresh', async (req, res) => {
+  const { userId, service } = req.body;
+  
+  if (!userId || !service) {
+    return res.status(400).json({ error: 'Missing required fields: userId, service' });
+  }
+
+  console.log(`[Internal] 🔄 Refreshing Token for: ${userId} - ${service}`);
+
+  // We will refactor performTokenRefresh to handle single target if passed
+  performTokenRefresh({ userId, service })
+    .catch(err => console.error(`[Internal] Refresh Execution Error for ${service}:`, err.message));
+
+  res.status(202).json({ success: true, message: 'Token refresh started asynchronously' });
 });
 
 app.get('/health', (req, res) => res.send('OK'));
