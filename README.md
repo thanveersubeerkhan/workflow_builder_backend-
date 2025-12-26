@@ -108,4 +108,7 @@ npm run test:schedule   # Time-based triggers
 - `src/tests/`: Collection of scripts to verify individual components.
 
 
-trigger dev run:npx trigger.dev@latest deploy 
+-`trigger dev run`:npx trigger.dev@latest dev 
+
+-`trigger dev run`:npx trigger.dev@latest dev 
+
