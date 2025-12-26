@@ -292,6 +292,20 @@ app.get('/api/connections/:userId', async (req, res) => {
   }
 });
 
+// New HTTP Relay Endpoint for Workers
+app.post('/api/worker-relay', (req, res) => {
+  const { room, event, data } = req.body;
+  
+  if (!room || !event) {
+    return res.status(400).json({ error: 'room and event are required' });
+  }
+
+  console.log(`[HTTP Relay] Received '${event}' for room '${room}'`);
+  io.to(room).emit(event, data);
+  
+  res.json({ success: true });
+});
+
 app.get('/health', (req, res) => res.send('OK'));
 
 httpServer.listen(PORT, () => {

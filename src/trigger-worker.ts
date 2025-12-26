@@ -1,18 +1,9 @@
 import { pool, withAdvisoryLock } from './db.js';
 import { runTrigger } from './engine.js';
 import { executeFlow } from './worker.js';
-import { io } from 'socket.io-client';
+import axios from 'axios';
 
-const SOCKET_URL = process.env.SOCKET_URL || `http://localhost:${process.env.PORT || 3000}`;
-const socket = io(SOCKET_URL);
-
-socket.on('connect', () => {
-    console.log('[Worker] Connected to Socket Relay');
-});
-
-socket.on('connect_error', (err) => {
-    // console.error('[Worker] Socket connection error:', err.message);
-});
+const SOCKET_SERVER_URL = process.env.SOCKET_URL || `http://localhost:${process.env.PORT || 3000}`;
 
 interface ScanOptions {
   flowId?: string;
@@ -93,10 +84,13 @@ export async function performTriggerScan(options: ScanOptions = {}, onTriggerFir
                   definition: definition,
                   triggerData: result.data,
                   onEvent: (event, data) => {
-                      socket.emit('worker-relay', {
+                      // Use HTTP relay instead of Socket.io client
+                      axios.post(`${SOCKET_SERVER_URL}/api/worker-relay`, {
                           room: `flow:${flow.id}`,
                           event,
                           data
+                      }).catch(err => {
+                          console.error(`[Worker] Failed to relay event ${event} via HTTP:`, err.message);
                       });
                   }
                 });
