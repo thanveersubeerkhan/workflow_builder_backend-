@@ -124,6 +124,8 @@ export async function executeFlow({ flowId, userId, definition, triggerData, onE
             });
         }
 
+        if (onEvent) onEvent('run-complete', { flowId, runId, status: 'failed', error: failureLog });
+
         return { success: false, error: failureLog, runId };
       }
     }
@@ -135,6 +137,7 @@ export async function executeFlow({ flowId, userId, definition, triggerData, onE
     );
     
     if (onEvent) onEvent('flow-success', { flowId, runId });
+    if (onEvent) onEvent('run-complete', { flowId, runId, status: 'success' });
     
     console.log(`[Executor] Flow ${flowId} finished successfully.`);
     return { success: true, runId };
@@ -147,6 +150,9 @@ export async function executeFlow({ flowId, userId, definition, triggerData, onE
       'UPDATE flow_runs SET status = $1, logs = $2 WHERE id = $3',
       ['failed', JSON.stringify(logs), runId]
     );
+
+    if (onEvent) onEvent('run-complete', { flowId, runId, status: 'failed', error: error.message });
+
     return { success: false, error: error.message, runId };
   }
 }
