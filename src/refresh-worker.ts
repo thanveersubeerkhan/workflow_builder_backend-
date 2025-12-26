@@ -40,11 +40,18 @@ export async function performTokenRefresh() {
             console.log(`[Refresh] ✅ Successfully refreshed ${integration.service}`);
           } catch (err: any) {
             console.error(`[Refresh] ❌ Failed to refresh ${integration.service} for ${integration.user_id}:`, err.message);
+            
+            // If the token is invalid or revoked, we should probably mark it or notify the user
+            if (err.message.includes('invalid_grant')) {
+              console.warn(`[Refresh] ⚠️ Token revoked or expired for ${integration.user_id}. User needs to re-authenticate.`);
+              // Optional: Mark as broken in DB
+              // await pool.query('UPDATE google_integrations SET refresh_token = NULL WHERE user_id = $1 AND service = $2', [integration.user_id, integration.service]);
+            }
           }
         }
       }
       
-      return { success: true, totalRefreshed: refreshCount };
+      return { success: true, totalRefreshed: refreshCount, skipped: false };
     } catch (error: any) {
       console.error('[Refresh] Error:', error.message);
       throw error;

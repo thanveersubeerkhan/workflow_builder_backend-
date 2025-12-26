@@ -166,11 +166,6 @@ io.on('connection', (socket) => {
         }
         const flow = result.rows[0];
 
-        // Run asynchronously but return immediate acknowledgment? 
-        // Or wait for result? User probably wants to know it started.
-        // Let's run it and await result to return final status, 
-        // but interim events are via room.
-        
         const runResult = await executeFlow({
             flowId: flow.id,
             userId: flow.user_id,
@@ -190,9 +185,6 @@ io.on('connection', (socket) => {
 
   // Relay event from Worker -> Server -> Client
   socket.on('worker-relay', (payload) => {
-      // payload: { room, event, data }
-      // Security: In a real app, verify some secret/token from the worker.
-      // For now, we trust the internal connection.
       const { room, event, data } = payload;
       console.log(`[Socket Relay] Received '${event}' for room '${room}' from worker`);
       if (room && event) {
@@ -298,6 +290,20 @@ app.get('/api/connections/:userId', async (req, res) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// New HTTP Relay Endpoint for Workers
+app.post('/api/worker-relay', (req, res) => {
+  const { room, event, data } = req.body;
+  
+  if (!room || !event) {
+    return res.status(400).json({ error: 'room and event are required' });
+  }
+
+  console.log(`[HTTP Relay] Received '${event}' for room '${room}'`);
+  io.to(room).emit(event, data);
+  
+  res.json({ success: true });
 });
 
 app.get('/health', (req, res) => res.send('OK'));

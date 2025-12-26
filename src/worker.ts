@@ -19,12 +19,15 @@ export async function executeFlow({ flowId, userId, definition, triggerData, onE
   console.log(`[Executor] Starting Flow: ${flowId} for User: ${userId}`);
   console.log(`[Executor] Definition Trigger:`, JSON.stringify(definition.trigger));
 
+  if (onEvent) onEvent('flow-start', { flowId, runId: null });
+
   // 1. Create a run record
   const runRes = await pool.query(
     'INSERT INTO flow_runs (flow_id, status) VALUES ($1, $2) RETURNING id',
     [flowId, 'running']
   );
   const runId = runRes.rows[0].id;
+  if (onEvent) onEvent('run-created', { runId });
 
   const context: any = { steps: { trigger: { data: triggerData } } };
   const logs: string[] = [];
@@ -108,6 +111,8 @@ export async function executeFlow({ flowId, userId, definition, triggerData, onE
           ['failed', JSON.stringify(logs), JSON.stringify(context.steps), runId]
         );
         
+        if (onEvent) onEvent('step-failure', { stepName: step.name, error: failureLog });
+        
         console.error(`[Executor] Flow ${flowId} failed at step ${step.name}:`, errorDetail);
         
         if (onEvent) {
@@ -119,6 +124,8 @@ export async function executeFlow({ flowId, userId, definition, triggerData, onE
             });
         }
 
+        if (onEvent) onEvent('run-complete', { flowId, runId, status: 'failed', error: failureLog });
+
         return { success: false, error: failureLog, runId };
       }
     }
@@ -128,6 +135,9 @@ export async function executeFlow({ flowId, userId, definition, triggerData, onE
       'UPDATE flow_runs SET status = $1, logs = $2, result = $3 WHERE id = $4',
       ['success', JSON.stringify(logs), JSON.stringify(context.steps), runId]
     );
+    
+    if (onEvent) onEvent('flow-success', { flowId, runId });
+    if (onEvent) onEvent('run-complete', { flowId, runId, status: 'success' });
     
     console.log(`[Executor] Flow ${flowId} finished successfully.`);
     return { success: true, runId };
@@ -140,6 +150,9 @@ export async function executeFlow({ flowId, userId, definition, triggerData, onE
       'UPDATE flow_runs SET status = $1, logs = $2 WHERE id = $3',
       ['failed', JSON.stringify(logs), runId]
     );
+
+    if (onEvent) onEvent('run-complete', { flowId, runId, status: 'failed', error: error.message });
+
     return { success: false, error: error.message, runId };
   }
 }
