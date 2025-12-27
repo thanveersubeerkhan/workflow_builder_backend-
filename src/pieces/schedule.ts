@@ -4,10 +4,10 @@ export const schedulePiece: Piece = {
   name: 'schedule',
   actions: {},
   triggers: {
-    schedule: async ({ lastProcessedId, params }) => {
+    schedule: async ({ lastProcessedId, params, epoch }) => {
       let intervalSeconds = 300; // Default 5 minutes
 
-      console.log(`[Schedule Debug] Params: ${JSON.stringify(params)} | LastId: ${JSON.stringify(lastProcessedId)}`);
+      console.log(`[Schedule Debug] Params: ${JSON.stringify(params)} | LastId: ${JSON.stringify(lastProcessedId)} | Epoch: ${epoch}`);
 
       if (params) {
         if (params.intervalType === 'seconds' && params.intervalSeconds) {
@@ -24,9 +24,9 @@ export const schedulePiece: Piece = {
       }
       
       const intervalMs = intervalSeconds * 1000;
-      const now = Date.now();
+      const now = epoch || Date.now();
       
-      console.log(`[Schedule Debug] Interval: ${intervalSeconds}s | Required Wait: ${intervalMs}ms`);
+      console.log(`[Schedule Debug] Interval: ${intervalSeconds}s | Using Time: ${new Date(now).toLocaleTimeString()}`);
 
       let lastRun: number | null = null;
       if (typeof lastProcessedId === 'string' && lastProcessedId) {

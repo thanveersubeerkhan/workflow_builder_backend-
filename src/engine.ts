@@ -92,9 +92,10 @@ interface RunTriggerArgs {
   triggerName: string;
   lastProcessedId?: any;
   params?: any;
+  epoch?: number;
 }
 
-export async function runTrigger({ userId, service, triggerName, lastProcessedId, params = {} }: RunTriggerArgs) {
+export async function runTrigger({ userId, service, triggerName, lastProcessedId, params = {}, epoch }: RunTriggerArgs) {
   const piece = pieces[service];
   if (!piece) throw new Error(`Service ${service} not found`);
 
@@ -132,5 +133,5 @@ export async function runTrigger({ userId, service, triggerName, lastProcessedId
   }
 
   // 4. Run Trigger
-  return await trigger({ auth, lastProcessedId, params });
+  return await trigger({ auth, lastProcessedId, params, epoch });
 }

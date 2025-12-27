@@ -23,7 +23,7 @@ export interface Piece {
 }
 
 export type ActionFunction = (args: { auth: any; params: any }) => Promise<any>;
-export type TriggerFunction = (args: { auth: any; lastProcessedId?: any; params?: any }) => Promise<any>;
+export type TriggerFunction = (args: { auth: any; lastProcessedId?: any; params?: any; epoch?: number }) => Promise<any>;
 
 export interface FlowStep {
   name: string;

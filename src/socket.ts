@@ -70,7 +70,14 @@ io.on('connection', (socket) => {
       
       if (is_active !== undefined) {
         updates.push(`is_active = $${paramIdx++}`);
-        values.push(is_active === true || is_active === 'true');
+        const active = is_active === true || is_active === 'true';
+        values.push(active);
+        
+        // If activating, set next_run_time = NOW to trigger immediate run
+        if (active) {
+          updates.push(`next_run_time = $${paramIdx++}`);
+          values.push(Date.now());
+        }
       }
 
       if (updates.length === 0) {
@@ -94,6 +101,14 @@ io.on('connection', (socket) => {
       socket.to(`flow:${flowId}`).emit('flow-updated', updatedFlow);
 
       if (callback) callback({ success: true, flow: updatedFlow });
+
+      // If just activated, trigger an instant scan bypass
+      if (is_active === true || is_active === 'true') {
+        console.log(`[Socket] ⚡ Instant scan triggered for newly activated flow: ${flowId}`);
+        performTriggerScan({ flowId }).catch(err => {
+          console.error(`[Socket] Error in initial scan for ${flowId}:`, err.message);
+        });
+      }
     } catch (error: any) {
       console.error('Error updating flow via socket:', error);
       if (callback) callback({ error: error.message });
