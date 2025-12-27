@@ -1,0 +1,1 @@
+-`trigger dev run`:npx trigger.dev@latest dev 

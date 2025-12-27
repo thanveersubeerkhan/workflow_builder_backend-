@@ -3,7 +3,7 @@ import axios from "axios";
 
 export const workflowScanner = schedules.task({
   id: "workflow-scanner",
-  cron: "*/1 * * * *", // Default to 1m as fallover, but we want 5s
+  cron: "*/1 * * * *", // 1 minute interval for Scalable Look-ahead architecture
   run: async (payload) => {
     console.log(`[Scheduler] ⏰ Timer fired. Pinging Render Hub...`);
     
