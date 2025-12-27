@@ -18,9 +18,9 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
   if (triggerData) console.log(`[Executor] 📦 Trigger Data:`, JSON.stringify(triggerData, null, 2));
   
   let runId = initialRunId;
-  let context: any = { steps: { trigger: { data: triggerData } } };
+  let context: any = { steps: { trigger: { data: triggerData } }, waited_steps: {}, completed_steps: {} };
   let lastStepIndex = -1;
-  const logs: string[] = [];
+  let logs: string[] = [];
 
   // 1. Resolve Run State
   if (runId) {
@@ -28,8 +28,26 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
     const existingRun = existingRunRes.rows[0];
     if (existingRun) {
         console.log(`[Executor] 🔄 Resuming existing run: ${runId} from index: ${existingRun.last_step_index}`);
-        context = existingRun.current_context || context;
+        
+        // Load Context & Safety Init
+        context = existingRun.current_context || { steps: { trigger: { data: existingRun.trigger_data } }, waited_steps: {} };
+        if (typeof context === 'string') try { context = JSON.parse(context); } catch(e) {}
+        if (!context.waited_steps) context.waited_steps = {};
+        if (!context.completed_steps) context.completed_steps = {};
+        if (!context.steps) context.steps = { trigger: { data: existingRun.trigger_data } };
+        
         lastStepIndex = existingRun.last_step_index ?? -1;
+        
+        // Load Logs
+        const dbLogs = existingRun.logs;
+        if (dbLogs) {
+            try {
+                const parsed = typeof dbLogs === 'string' ? JSON.parse(dbLogs) : dbLogs;
+                if (Array.isArray(parsed)) logs = [...parsed];
+            } catch(e: any) {
+                console.error("[Executor] Log parse error:", e.message);
+            }
+        }
     }
   } else {
     // Fallback: Create a run record if not pre-created by scanner
@@ -40,6 +58,29 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
     runId = runRes.rows[0].id;
     console.log(`[Executor] 📝 Created new run record: ${runId}`);
   }
+
+  // --- Synchronized Persistence Helper ---
+  let updateQueue = Promise.resolve();
+  async function persistState(status: string = 'running', overrideIndex?: number) {
+      const currentIndex = overrideIndex ?? lastStepIndex;
+      // Capture state snapshots IMMEDIATELY to prevent race conditions before stringification
+      const contextSnapshot = JSON.stringify(context);
+      const logsSnapshot = JSON.stringify(logs);
+      const resultsSnapshot = JSON.stringify(context.steps);
+
+      updateQueue = updateQueue.then(async () => {
+          try {
+              await pool.query(
+                  'UPDATE flow_runs SET status = $1, logs = $2, current_context = $3, result = $4, last_step_index = $5 WHERE id = $6',
+                  [status, logsSnapshot, contextSnapshot, resultsSnapshot, currentIndex, runId]
+              );
+          } catch (err: any) {
+              console.error(`[Executor] ⚠️ DB Persist Failed for ${runId}:`, err.message);
+          }
+      });
+      return updateQueue;
+  }
+
 
   if (onEvent) onEvent('flow-start', { flowId, runId });
 
@@ -55,13 +96,14 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
       });
   }
 
-  async function executeStepList(steps: FlowStep[], startIndex: number = 0): Promise<'success' | 'failed' | 'waiting'> {
+  async function executeStepList(steps: FlowStep[], startIndex: number = 0): Promise<'success' | 'failed' | 'waiting' | 'rejected'> {
     for (let i = startIndex; i < steps.length; i++) {
       const step = steps[i];
       const stepStartTime = Date.now();
       
-      if (steps === definition.steps && i <= lastStepIndex) {
-        console.log(`[Executor] ⏭️ Skipping Step: ${step.name}`);
+      // 🚀 SKIP LOGIC: If step is already completed, don't run it again
+      if (context.completed_steps && context.completed_steps[step.name]) {
+        console.log(`[Executor] ⏭️ Skipping already COMPLETED step: ${step.name}`);
         continue;
       }
 
@@ -92,6 +134,7 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
             console.log(`[Executor] 🌪️ Parallel Block "${step.name}" branches complete results:`, results);
             if (results.includes('waiting')) return 'waiting';
             if (results.includes('failed')) return 'failed';
+            if (results.includes('rejected')) return 'rejected'; // Added rejected check
 
             context.steps[step.name] = { data: { status: 'parallel-complete' } };
         }
@@ -122,14 +165,41 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
             console.log(`[Executor] 🔄 Loop "${step.name}" complete.`);
         }
         else if (step.type === 'wait') {
+            // Check if we already waited on this step and are now resuming
+            if (context.waited_steps && context.waited_steps[step.name]) {
+                const waitState = context.waited_steps[step.name];
+                
+                if (waitState === 'rejected') {
+                    console.log(`[Executor] 🛑 WAIT step "${step.name}" was REJECTED. Stopping flow.`);
+                    logs.push(`[${new Date().toISOString()}] 🛑 Step "${step.name}" was REJECTED by user.`);
+                    context.steps[step.name] = { data: { status: 'rejected' } };
+                    
+                    if (onEvent) {
+                        onEvent('step-run-finish', {
+                            nodeId: step.name,
+                            status: 'error',
+                            output: { error: 'Rejected by user', status: 'rejected' },
+                            duration: 0
+                        });
+                    }
+                    return 'rejected'; // Stop execution here with explicit rejected status
+                }
+
+                console.log(`[Executor] ⏭️ Resuming past WAIT step: ${step.name}`);
+                delete context.waited_steps[step.name];
+                context.steps[step.name] = { data: { status: 'resumed' } };
+                console.log(`[Executor] ✅ Wait "${step.name}" resumed. Continuing.`);
+                continue; 
+            }
+
             console.log(`[Executor] ⏸️ Flow is WAITING at: ${step.name}`);
             logs.push(`[${new Date().toISOString()}] ⏸️ Step "${step.name}" triggered a WAIT.`);
             
-            const currentTopIndex = steps === definition.steps ? i : lastStepIndex;
-            await pool.query(
-                'UPDATE flow_runs SET status = \'waiting\', logs = $1, current_context = $2, last_step_index = $3 WHERE id = $4',
-                [JSON.stringify(logs), JSON.stringify(context), currentTopIndex, runId] 
-            );
+            // Mark this step as waiting (true means pending approval)
+            if (!context.waited_steps) context.waited_steps = {};
+            context.waited_steps[step.name] = true;
+
+            await persistState('waiting', lastStepIndex);
             
             if (onEvent) onEvent('run-waiting', { runId, stepName: step.name });
             return 'waiting'; 
@@ -137,10 +207,15 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
 
         const duration = Date.now() - stepStartTime;
         const currentTopIndex = steps === definition.steps ? i : lastStepIndex;
-        await pool.query(
-          'UPDATE flow_runs SET logs = $1, result = $2, current_context = $3, last_step_index = $4, status = \'running\' WHERE id = $5',
-          [JSON.stringify(logs), JSON.stringify(context.steps), JSON.stringify(context), currentTopIndex, runId]
-        );
+        
+        // Update local lastStepIndex so nested steps use the latest top-level progress
+        if (steps === definition.steps) lastStepIndex = i;
+
+        persistState('running', currentTopIndex);
+
+        // Mark as completed so we skip it on future resumes
+        if (!context.completed_steps) context.completed_steps = {};
+        context.completed_steps[step.name] = true;
 
         if (onEvent) {
             onEvent('step-run-finish', {
@@ -160,10 +235,7 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
         logs.push(`[${new Date().toISOString()}] ❌ FAILED at "${step.name}": ${errorDetail}`);
         
         const currentTopIndex = steps === definition.steps ? i - 1 : lastStepIndex;
-        await pool.query(
-          'UPDATE flow_runs SET status = $1, logs = $2, result = $3, current_context = $4, last_step_index = $5 WHERE id = $6',
-          ['failed', JSON.stringify(logs), JSON.stringify(context.steps), JSON.stringify(context), currentTopIndex, runId]
-        );
+        await persistState('failed', currentTopIndex);
         
         if (onEvent) onEvent('step-failure', { stepName: step.name, error: errorDetail });
         if (onEvent) {
@@ -181,24 +253,30 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
   }
 
   try {
-    const finalStatus = await executeStepList(definition.steps, 0);
+    // 🚀 BEGIN EXECUTION: Start from precisely where we left off
+    const startIndex = (lastStepIndex === -1) ? 0 : lastStepIndex;
+    const finalStatus = await executeStepList(definition.steps, startIndex);
     const totalDuration = Date.now() - flowStartTime;
 
     if (finalStatus === 'waiting') {
         console.log(`[Executor] 🏁 Flow paused (waiting). Duration: ${totalDuration}ms`);
         return { success: true, status: 'waiting', runId };
     }
+    if (finalStatus === 'rejected') {
+        console.warn(`[Executor] 🏁 Flow rejected and stopped. Duration: ${totalDuration}ms`);
+        await persistState('rejected');
+        if (onEvent) onEvent('run-complete', { flowId, runId, status: 'rejected' });
+        return { success: true, runId, status: 'rejected' };
+    }
     if (finalStatus === 'failed') {
         console.error(`[Executor] 🏁 Flow failed. Duration: ${totalDuration}ms`);
+        await persistState('failed');
         if (onEvent) onEvent('run-complete', { flowId, runId, status: 'failed' });
         return { success: false, runId };
     }
 
     // Mark as success
-    await pool.query(
-      'UPDATE flow_runs SET status = $1, logs = $2, result = $3, current_context = $4, last_step_index = $5 WHERE id = $6',
-      ['success', JSON.stringify(logs), JSON.stringify(context.steps), JSON.stringify(context), definition.steps.length - 1, runId]
-    );
+    await persistState('success', definition.steps.length - 1);
     
     if (onEvent) onEvent('flow-success', { flowId, runId });
     if (onEvent) onEvent('run-complete', { flowId, runId, status: 'success' });
@@ -210,10 +288,7 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
     console.error(`[Executor] 💀 CRITICAL ERROR in flow ${flowId}:`, error.message);
     logs.push(`[${new Date().toISOString()}] 💀 CRITICAL ERROR: ${error.message}`);
     
-    await pool.query(
-      'UPDATE flow_runs SET status = $1, logs = $2, current_context = $3, last_step_index = $4 WHERE id = $5',
-      ['failed', JSON.stringify(logs), JSON.stringify(context), lastStepIndex, runId]
-    );
+    await persistState('failed');
 
     if (onEvent) onEvent('run-complete', { flowId, runId, status: 'failed', error: error.message });
     return { success: false, error: error.message, runId };

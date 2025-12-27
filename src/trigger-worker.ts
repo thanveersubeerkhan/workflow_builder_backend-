@@ -6,6 +6,50 @@ interface ScanOptions {
   flowId?: string;
 }
 
+interface DispatchOptions {
+    flowId: string;
+    userId: string;
+    definition: any;
+    triggerData?: any;
+    runId?: string;
+    delaySeconds?: number;
+}
+
+/**
+ * Dispatches a workflow to the Trigger.dev queue for asynchronous execution.
+ */
+export async function dispatchWorkflowExecution({ flowId, userId, definition, triggerData, runId, delaySeconds = 0 }: DispatchOptions) {
+    let finalRunId = runId;
+
+    // 1. If no runId, pre-create the run for early tracking
+    if (!finalRunId) {
+        const runRes = await pool.query(
+            'INSERT INTO flow_runs (flow_id, status, trigger_data, current_context, last_step_index) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+            [flowId, 'pending', JSON.stringify(triggerData || {}), JSON.stringify({ steps: { trigger: { data: triggerData || {} } } }), -1]
+        );
+        finalRunId = runRes.rows[0].id;
+    }
+
+    console.log(`[Dispatcher] 🚀 Dispatching Run: ${finalRunId} to Queue (Delay: ${delaySeconds}s)`);
+
+    // 2. Push to Trigger.dev Task Queue
+    try {
+        await tasks.trigger("workflow-executor", {
+            runId: finalRunId,
+            flowId,
+            userId,
+            definition,
+            triggerData: triggerData || {}
+        }, { 
+            delay: `${delaySeconds}s`
+        });
+        return { success: true, runId: finalRunId };
+    } catch (err: any) {
+        console.error(`[Dispatcher] ❌ Failed to dispatch to Trigger.dev:`, err.message);
+        throw err;
+    }
+}
+
 /**
  * Performs a high-scale parallel scan for active triggers.
  * Refactored for "Double-Loopback" architecture.
@@ -98,31 +142,13 @@ export async function performTriggerScan(options: ScanOptions = {}) {
               if (result && result.newLastId) {
                 const delaySeconds = Math.max(0, Math.floor((targetTime - Date.now()) / 1000));
                 
-                // 4. PRE-CREATE RUN (Early runId creation)
-                const runRes = await pool.query(
-                  'INSERT INTO flow_runs (flow_id, status, trigger_data, current_context, last_step_index) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-                  [flow.id, 'pending', JSON.stringify(result.data), JSON.stringify({ steps: { trigger: { data: result.data } } }), -1]
-                );
-                const runId = runRes.rows[0].id;
-
-                console.log(`[Scanner] 🎯 Trigger FIRE! Flow: ${flow.id}, RunId: ${runId}`);
-                console.log(`[Scanner] 📡 Event: ${trigger.name}, Target: ${new Date(targetTime).toLocaleTimeString()}, Delay: ${delaySeconds}s`);
-                console.log(`[Scanner] 📊 Data:`, JSON.stringify(result.data, null, 2));
-
-                // DISPATCH
-                try {
-                  await tasks.trigger("workflow-executor", {
-                    runId: runId, // Pass the pre-created run ID
-                    flowId: flow.id,
-                    userId: flow.user_id,
-                    definition: definition,
-                    triggerData: result.data
-                  }, { 
-                    delay: `${delaySeconds}s`
-                  });
-                } catch (triggerErr: any) {
-                  console.error(`[Scanner] ❌ Dispatch Error:`, triggerErr.message);
-                }
+                await dispatchWorkflowExecution({
+                  flowId: flow.id,
+                  userId: flow.user_id,
+                  definition: definition,
+                  triggerData: result.data,
+                  delaySeconds: delaySeconds
+                });
 
                 lastProcessedId = result.newLastId;
                 fireCount++;

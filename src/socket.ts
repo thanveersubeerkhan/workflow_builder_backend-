@@ -11,7 +11,7 @@ import { runAction } from './engine.js';
 import { mapUIToDefinition } from './flow-mapper.js';
 import { executeFlow } from './worker.js';
 import { performTokenRefresh } from './refresh-worker.js';
-import { performTriggerScan } from './trigger-worker.js';
+import { performTriggerScan, dispatchWorkflowExecution } from './trigger-worker.js';
 
 dotenv.config();
 
@@ -182,13 +182,10 @@ io.on('connection', (socket) => {
         }
         const flow = result.rows[0];
 
-        const runResult = await executeFlow({
+        const runResult = await dispatchWorkflowExecution({
             flowId: flow.id,
             userId: flow.user_id,
-            definition: flow.definition,
-            onEvent: (event, data) => {
-                io.to(`flow:${flow.id}`).emit(event, data);
-            }
+            definition: flow.definition
         });
 
         if (callback) callback(runResult);
@@ -208,16 +205,12 @@ io.on('connection', (socket) => {
 
         const flow = flowRes.rows[0];
 
-        // We don't await this as it could take time
-        executeFlow({
+        await dispatchWorkflowExecution({
             runId,
             flowId: flow.id,
             userId: flow.user_id,
-            definition: flow.definition,
-            onEvent: (event, data) => {
-                io.to(`flow:${flowId}`).emit(event, data);
-            }
-        }).catch(err => console.error(`[Socket] Resume error for ${runId}:`, err.message));
+            definition: flow.definition
+        });
 
         if (callback) callback({ success: true, message: 'Resume started' });
       } catch (error: any) {
@@ -277,6 +270,49 @@ app.post('/api/run', async (req: express.Request, res: express.Response) => {
   }
 });
 
+app.post('/api/flows', async (req: express.Request, res: express.Response) => {
+  const { userId, name, ui_definition, definition: explicitDef } = req.body;
+  
+  // Use explicit definition if provided (for curl tests), otherwise map from UI 
+  const definition = explicitDef || mapUIToDefinition(ui_definition || { nodes: [], edges: [] });
+
+  try {
+    const result = await pool.query(
+      'INSERT INTO flows (user_id, name, definition, ui_definition, is_active) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [userId, name, JSON.stringify(definition), JSON.stringify(ui_definition || { nodes: [], edges: [] }), false]
+    );
+    res.json({ success: true, flow: result.rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/flows', async (req: express.Request, res: express.Response) => {
+  const userId = req.query.userId as string;
+  if (!userId) return res.status(400).json({ error: 'userId is required' });
+
+  try {
+    const result = await pool.query(
+      'SELECT id, name, is_active, created_at, updated_at FROM flows WHERE user_id = $1 ORDER BY created_at DESC',
+      [userId]
+    );
+    res.json({ success: true, flows: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/flows/:flowId', async (req: express.Request, res: express.Response) => {
+  const { flowId } = req.params;
+  try {
+    const result = await pool.query('SELECT * FROM flows WHERE id = $1', [flowId]);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Flow not found' });
+    res.json({ success: true, flow: result.rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 
 
@@ -300,25 +336,89 @@ app.get('/api/flows/:flowId/runs', async (req: express.Request, res: express.Res
 
 app.post('/api/flows/:flowId/run', async (req, res) => {
   const { flowId } = req.params;
+  const triggerData = req.body || {};
+  
   try {
     const result = await pool.query('SELECT * FROM flows WHERE id = $1', [flowId]);
     if (result.rowCount === 0) return res.status(404).json({ error: 'Flow not found' });
 
     const flow = result.rows[0];
     
-    const runResult = await executeFlow({
+    const runResult = await dispatchWorkflowExecution({
       flowId: flow.id,
       userId: flow.user_id,
       definition: flow.definition,
-      onEvent: (event, data) => {
-          io.to(`flow:${flow.id}`).emit(event, data);
-      }
+      triggerData
     });
 
     res.json(runResult);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
+});
+
+app.post('/api/flows/:flowId/runs/:runId/resume', async (req, res) => {
+  const { flowId, runId } = req.params;
+  console.log(`[API] Manual resume requested for run ${runId} (Flow: ${flowId})`);
+  
+  try {
+    const flowRes = await pool.query('SELECT * FROM flows WHERE id = $1', [flowId]);
+    if (flowRes.rowCount === 0) return res.status(404).json({ error: 'Flow not found' });
+
+    const flow = flowRes.rows[0];
+
+    await dispatchWorkflowExecution({
+        runId,
+        flowId: flow.id,
+        userId: flow.user_id,
+        definition: flow.definition
+    });
+
+    res.json({ success: true, message: 'Resume started' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/flows/:flowId/runs/:runId/reject', async (req, res) => {
+    const { flowId, runId } = req.params;
+    console.log(`[API] Rejection requested for run ${runId} (Flow: ${flowId})`);
+
+    try {
+        const runRes = await pool.query('SELECT * FROM flow_runs WHERE id = $1', [runId]);
+        if (runRes.rowCount === 0) return res.status(404).json({ error: 'Run not found' });
+
+        const run = runRes.rows[0];
+        let context = run.current_context || { waited_steps: {} };
+        if (typeof context === 'string') context = JSON.parse(context);
+
+        // Find the step that is currently waiting (value === true)
+        const waitingStep = Object.keys(context.waited_steps || {}).find(k => context.waited_steps[k] === true);
+
+        if (waitingStep) {
+            context.waited_steps[waitingStep] = 'rejected';
+            
+            // Save updated context back to DB before resuming
+            await pool.query('UPDATE flow_runs SET current_context = $1 WHERE id = $2', [JSON.stringify(context), runId]);
+
+            const flowRes = await pool.query('SELECT * FROM flows WHERE id = $1', [flowId]);
+            const flow = flowRes.rows[0];
+
+            // Dispatch to queue so the engine processes the rejection and stops
+            await dispatchWorkflowExecution({
+                runId,
+                flowId: flow.id,
+                userId: flow.user_id,
+                definition: flow.definition
+            });
+
+            res.json({ success: true, message: 'Flow rejected and terminated' });
+        } else {
+            res.status(400).json({ error: 'No waiting step found to reject' });
+        }
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 app.get('/api/connections/:userId', async (req, res) => {

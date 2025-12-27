@@ -30,7 +30,9 @@ export function evaluateCondition(expression: string, context: any): boolean {
 
 function getObjectPath(obj: any, path: string): any {
   if (!path) return undefined;
-  return path.split('.').reduce((prev, curr) => {
-    return prev ? prev[curr] : undefined;
+  // Convert [index] to .index for easier splitting
+  const normalizedPath = path.replace(/\[(\d+)\]/g, '.$1');
+  return normalizedPath.split('.').reduce((prev, curr) => {
+    return (prev && prev !== null) ? prev[curr] : undefined;
   }, obj);
 }
