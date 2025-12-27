@@ -15,6 +15,7 @@ export interface UIEdge {
   id: string;
   source: string;
   target: string;
+  data?: any;
 }
 
 export interface UIDefinition {
@@ -29,11 +30,10 @@ export function mapUIToDefinition(ui: UIDefinition) {
     return { trigger: null, steps: [] };
   }
 
-  // 1. Identify Trigger Node (usually id: "1" or containing a trigger name)
+  // 1. Identify Trigger Node
   const triggerNode = nodes.find(n => n.id === "1" || n.data?.trigger || (n.data?.actionId && n.id !== 'end' && !edges.find(e => e.target === n.id)));
   
   if (!triggerNode || triggerNode.type === 'end') {
-    console.warn('Mapper: No trigger node identified.');
     return { trigger: null, steps: [] };
   }
 
@@ -42,41 +42,121 @@ export function mapUIToDefinition(ui: UIDefinition) {
     piece: pieceName,
     name: mapTriggerName(pieceName, triggerNode.data?.actionId || 'trigger'),
     displayName: `${triggerNode.data?.appName || 'Trigger'} ${triggerNode.data?.actionId || 'Event'}`,
-    nodeId: triggerNode.id, // Include Node ID for live logs
+    nodeId: triggerNode.id,
     params: triggerNode.data?.params || {}
   };
 
-  // 2. Traversal: Follow edges from the trigger
-  const steps: any[] = [];
-  let currentNodeId = triggerNode.id;
-  const visited = new Set([currentNodeId]);
-
-  // BFS/DFS to follow the linear path (or branching in future)
-  // For now, we assume a single linear path to match current engine
-  while (true) {
-    const nextEdge = edges.find(e => e.source === currentNodeId && !visited.has(e.target));
-    if (!nextEdge) break;
-
-    const nextNode = nodes.find(n => n.id === nextEdge.target);
-    if (!nextNode || nextNode.type === 'end') break;
-
-    const stepPiece = mapPieceName(nextNode.data?.icon || nextNode.data?.appName);
-    steps.push({
-      name: nextNode.id, // Critical: Must match UI Node ID for live logs
-      displayName: `${nextNode.data?.appName || 'Step'} ${nextNode.data?.actionId || 'Action'}`,
-      piece: stepPiece,
-      action: mapActionName(stepPiece, nextNode.data?.actionId),
-      params: nextNode.data?.params || {}
-    });
-
-    currentNodeId = nextNode.id;
-    visited.add(currentNodeId);
-    
-    // Safety break to prevent infinite loops
-    if (visited.size > nodes.length) break;
+  // 2. Recursive Traversal
+  const visited = new Set<string>();
+  
+  function getOutbound(fromId: string) {
+    return edges
+      .filter(e => e.source === fromId)
+      .map(e => ({ node: nodes.find(n => n.id === e.target)!, edge: e }))
+      .filter(x => x.node && x.node.type !== 'end');
   }
 
-  return { trigger, steps };
+  function traverse(startNodeId: string): any[] {
+    const steps: any[] = [];
+    let currentId = startNodeId;
+
+    while (true) {
+        const outbound = getOutbound(currentId);
+        if (outbound.length === 0) break;
+
+        // Peak at the next node
+        const { node, edge } = outbound[0];
+        if (visited.has(node.id)) break;
+        
+        // Is the NEXT node a branching node?
+        const isCondition = node.data?.icon === 'condition' || node.data?.type === 'condition' || getOutbound(node.id).some(o => o.edge.data?.label === 'true' || o.edge.data?.label === 'false');
+        const nextOutbound = getOutbound(node.id);
+        const isParallel = !isCondition && nextOutbound.length > 1;
+        const isLoop = node.data?.type === 'loop' || node.data?.actionId === 'loop';
+        const isWait = node.data?.type === 'wait' || node.data?.icon === 'pause' || node.data?.actionId === 'wait';
+
+        visited.add(node.id);
+
+        if (isCondition) {
+            const conditionOutbound = getOutbound(node.id);
+            const trueNode = conditionOutbound.find(o => o.edge.data?.label === 'true')?.node;
+            const falseNode = conditionOutbound.find(o => o.edge.data?.label === 'false')?.node;
+            
+            steps.push({
+                name: node.id,
+                type: 'condition',
+                condition: node.data?.params?.condition || 'false',
+                onTrue: trueNode ? traverseBranch(trueNode.id) : [],
+                onFalse: falseNode ? traverseBranch(falseNode.id) : []
+            });
+            break; 
+        } else if (isParallel) {
+            steps.push({
+                name: node.id,
+                type: 'parallel',
+                branches: nextOutbound.map(o => traverseBranch(o.node.id))
+            });
+            break;
+        } else if (isLoop) {
+            const loopOutbound = getOutbound(node.id);
+            steps.push({
+                name: node.id,
+                type: 'loop',
+                displayName: `${node.data?.appName || 'Loop'}`,
+                params: node.data?.params || {},
+                branches: loopOutbound.length > 0 ? [traverseBranch(loopOutbound[0].node.id)] : []
+            });
+            break;
+        } else if (isWait) {
+            steps.push({
+                name: node.id,
+                type: 'wait',
+                displayName: 'Wait for Human',
+                piece: 'wait',
+                action: 'wait',
+                params: node.data?.params || {}
+            });
+            currentId = node.id; // Continue linear path after wait if any
+        } else {
+            // Linear Action
+            const stepPiece = mapPieceName(node.data?.icon || node.data?.appName);
+            steps.push({
+                name: node.id,
+                type: 'action',
+                displayName: `${node.data?.appName || 'Step'} ${node.data?.actionId || 'Action'}`,
+                piece: stepPiece,
+                action: mapActionName(stepPiece, node.data?.actionId || 'action'),
+                params: node.data?.params || {}
+            });
+            currentId = node.id;
+        }
+    }
+
+    return steps;
+  }
+
+  function traverseBranch(nodeId: string): any[] {
+     // A branch traversal starts with the node itself if hasn't been visited as a primary path
+     if (visited.has(nodeId)) return [];
+     visited.add(nodeId);
+
+     const node = nodes.find(n => n.id === nodeId);
+     if (!node) return [];
+
+     const stepPiece = mapPieceName(node.data?.icon || node.data?.appName);
+     const step: any = {
+         name: node.id,
+         displayName: `${node.data?.appName || 'Step'} ${node.data?.actionId || 'Action'}`,
+         piece: stepPiece,
+         action: mapActionName(stepPiece, node.data?.actionId || 'action'),
+         params: node.data?.params || {}
+     };
+
+     // Simple linear traversal for the rest of the branch
+     return [step, ...traverse(nodeId)];
+  }
+
+  return { trigger, steps: traverse(triggerNode.id) };
 }
 
 /**
@@ -114,6 +194,8 @@ function mapPieceName(uiName: string | undefined): string {
   if (name.includes('doc')) return 'docs';
   if (name.includes('drive')) return 'drive';
   if (name.includes('schedule')) return 'schedule';
+  if (name.includes('logic')) return 'logic';
+  if (name.includes('wait') || name.includes('pause')) return 'wait';
   
   return name.replace('google_', '');
 }

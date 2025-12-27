@@ -13,27 +13,33 @@ interface RefreshOptions {
  */
 export async function performTokenRefresh(options: RefreshOptions = {}) {
   const { userId, service } = options;
+  const startTime = Date.now();
 
   // CASE 1: Targeted Refresh (The Execution Muscle)
   if (userId && service) {
-    console.log(`[Refresh] 🔄 Targeted Refresh: ${userId} - ${service}`);
-    const integration = await getIntegration(userId, service);
-    if (!integration) throw new Error(`Integration not found for ${userId}/${service}`);
+    console.log(`[Refresh] 🔄 Targeted Execution: ${userId} - ${service}`);
+    try {
+      const integration = await getIntegration(userId, service);
+      if (!integration) throw new Error(`Integration not found for ${userId}/${service}`);
 
-    const client = createOAuthClient();
-    client.setCredentials({ refresh_token: integration.refresh_token });
-    const { credentials } = await client.refreshAccessToken();
+      const client = createOAuthClient();
+      client.setCredentials({ refresh_token: integration.refresh_token });
+      const { credentials } = await client.refreshAccessToken();
 
-    await saveIntegration({
-      user_id: userId,
-      service,
-      refresh_token: integration.refresh_token,
-      access_token: credentials.access_token ?? undefined,
-      expiry_date: credentials.expiry_date ?? undefined,
-      scopes: integration.scopes
-    });
-    console.log(`[Refresh] ✅ Successfully refreshed ${service} for ${userId}`);
-    return { success: true };
+      await saveIntegration({
+        user_id: userId,
+        service,
+        refresh_token: integration.refresh_token,
+        access_token: credentials.access_token ?? undefined,
+        expiry_date: credentials.expiry_date ?? undefined,
+        scopes: integration.scopes
+      });
+      console.log(`[Refresh] ✅ Token refreshed successfully for ${service} (User: ${userId}). Duration: ${Date.now() - startTime}ms`);
+      return { success: true };
+    } catch (err: any) {
+      console.error(`[Refresh] ❌ Failed to refresh ${service} for ${userId}:`, err.message);
+      throw err;
+    }
   }
 
   // CASE 2: Global Scan (The Brain)
@@ -46,11 +52,14 @@ export async function performTokenRefresh(options: RefreshOptions = {}) {
       let dispatchCount = 0;
 
       for (const integration of integrations) {
-        if (integration.expiry_date && (Number(integration.expiry_date) < now + buffer)) {
-          console.log(`[Refresh] Found expiring token: ${integration.user_id} - ${integration.service}. Dispatching to queue...`);
+        const expiresAt = Number(integration.expiry_date);
+        const timeUntilExpiry = expiresAt - now;
+        
+        if (integration.expiry_date && (expiresAt < now + buffer)) {
+          console.log(`[Refresh] 🚨 Token Expiring: ${integration.user_id} - ${integration.service} (Expires in ${Math.round(timeUntilExpiry/1000/60)}m)`);
           
           // DISPATCH to Trigger.dev Queue
-          console.log(`[Refresh] 🚀 Dispatching token-refresh-executor for ${integration.user_id}...`);
+          console.log(`[Refresh] 🚀 Dispatching loopback refresh for ${integration.user_id}...`);
           try {
             await tasks.trigger("token-refresh-executor", {
               userId: integration.user_id,
@@ -65,10 +74,11 @@ export async function performTokenRefresh(options: RefreshOptions = {}) {
         }
       }
       
-      console.log(`[Refresh] Scan complete. Dispatched ${dispatchCount} refresh tasks.`);
+      const duration = Date.now() - startTime;
+      console.log(`[Refresh] ✅ Global scan complete. Duration: ${duration}ms, Dispatched: ${dispatchCount}`);
       return { success: true, totalDispatched: dispatchCount };
     } catch (error: any) {
-      console.error('[Refresh] Scan Error:', error.message);
+      console.error('[Refresh] ❌ Fatal Scan Error:', error.message);
       throw error;
     }
   });

@@ -7,5 +7,5 @@ export default defineConfig({
   // The default maximum duration for a task run in seconds
   maxDuration: 3600, 
   // The directory where your tasks are located
-  dirs: ["src/trigger"],
+  dirs: [],
 });

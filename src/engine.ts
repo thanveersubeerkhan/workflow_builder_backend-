@@ -3,6 +3,7 @@ import { sheetsPiece } from './pieces/sheets.js';
 import { drivePiece } from './pieces/drive.js';
 import { docsPiece } from './pieces/docs.js';
 import { schedulePiece } from './pieces/schedule.js';
+import { loggerPiece } from './pieces/logger.js';
 import { getIntegration, saveIntegration } from './db.js';
 import { createOAuthClient } from './google.js';
 import { Piece } from './types.js';
@@ -12,7 +13,8 @@ const pieces: Record<string, Piece> = {
   sheets: sheetsPiece,
   drive: drivePiece,
   docs: docsPiece,
-  schedule: schedulePiece
+  schedule: schedulePiece,
+  logger: loggerPiece
 };
 
 interface RunActionArgs {

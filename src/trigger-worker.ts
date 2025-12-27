@@ -17,6 +17,8 @@ export async function performTriggerScan(options: ScanOptions = {}) {
     const now = Date.now();
     const LOOK_AHEAD_MS = 65 * 1000; // 65 seconds
     const windowEnd = now + LOOK_AHEAD_MS;
+    const startTime = Date.now();
+    console.log(`[Scanner] ⏰ Starting Scan. Window End: ${new Date(windowEnd).toLocaleTimeString()}`);
 
     // 1. Fetch active flows that are due within the window
     let query = 'SELECT * FROM flows WHERE is_active = true';
@@ -34,10 +36,11 @@ export async function performTriggerScan(options: ScanOptions = {}) {
     const flows = flowsRes.rows;
 
     if (flows.length === 0) {
+      console.log(`[Scanner] 💤 No flows due in this window.`);
       return { success: true, fireCount: 0 };
     }
 
-    console.log(`[Scanner] ⏰ Found ${flows.length} flow(s) due by ${new Date(windowEnd).toLocaleTimeString()}`);
+    console.log(`[Scanner] 📂 Found ${flows.length} flow(s) to check.`);
 
     // 2. Parallel Scanning with Batching
     const BATCH_SIZE = 10;
@@ -45,6 +48,8 @@ export async function performTriggerScan(options: ScanOptions = {}) {
 
     for (let i = 0; i < flows.length; i += BATCH_SIZE) {
       const batch = flows.slice(i, i + BATCH_SIZE);
+      console.log(`[Scanner] 📦 Processing Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(flows.length / BATCH_SIZE)} (${batch.length} flows)`);
+      
       const results = await Promise.all(batch.map(async (flow) => {
         return await withAdvisoryLock(`scan:flow:${flow.id}`, async () => {
           try {
@@ -92,11 +97,22 @@ export async function performTriggerScan(options: ScanOptions = {}) {
 
               if (result && result.newLastId) {
                 const delaySeconds = Math.max(0, Math.floor((targetTime - Date.now()) / 1000));
-                console.log(`🎯 Trigger FIRE! [${trigger.name}] for flow ${flow.id}. Target: ${new Date(targetTime).toLocaleTimeString()}, Delay: ${delaySeconds}s`);
+                
+                // 4. PRE-CREATE RUN (Early runId creation)
+                const runRes = await pool.query(
+                  'INSERT INTO flow_runs (flow_id, status, trigger_data, current_context, last_step_index) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+                  [flow.id, 'pending', JSON.stringify(result.data), JSON.stringify({ steps: { trigger: { data: result.data } } }), -1]
+                );
+                const runId = runRes.rows[0].id;
+
+                console.log(`[Scanner] 🎯 Trigger FIRE! Flow: ${flow.id}, RunId: ${runId}`);
+                console.log(`[Scanner] 📡 Event: ${trigger.name}, Target: ${new Date(targetTime).toLocaleTimeString()}, Delay: ${delaySeconds}s`);
+                console.log(`[Scanner] 📊 Data:`, JSON.stringify(result.data, null, 2));
 
                 // DISPATCH
                 try {
                   await tasks.trigger("workflow-executor", {
+                    runId: runId, // Pass the pre-created run ID
                     flowId: flow.id,
                     userId: flow.user_id,
                     definition: definition,
@@ -128,7 +144,7 @@ export async function performTriggerScan(options: ScanOptions = {}) {
               return true;
             }
           } catch (err: any) {
-            console.error(`[Scanner] Error in flow ${flow.id}:`, err.message);
+            console.error(`[Scanner] ❌ Error in flow ${flow.id}:`, err.message);
           }
           return false;
         });
@@ -136,7 +152,8 @@ export async function performTriggerScan(options: ScanOptions = {}) {
       totalFired += results.filter(Boolean).length;
     }
 
-    console.log(`[Scanner] Scan complete. Total items fired: ${totalFired}`);
+    const duration = Date.now() - startTime;
+    console.log(`[Scanner] ✅ Scan cycle finished. Duration: ${duration}ms, Items fired: ${totalFired}`);
     return { success: true, fireCount: totalFired };
 
   } catch (error: any) {

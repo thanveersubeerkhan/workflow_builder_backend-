@@ -21,7 +21,15 @@ export function resolveVariables(input: any, context: any): any {
   });
 }
 
+export function evaluateCondition(expression: string, context: any): boolean {
+  const resolved = resolveVariables(expression, context);
+  if (resolved === 'true' || resolved === true) return true;
+  if (resolved === 'false' || resolved === false) return false;
+  return !!resolved;
+}
+
 function getObjectPath(obj: any, path: string): any {
+  if (!path) return undefined;
   return path.split('.').reduce((prev, curr) => {
     return prev ? prev[curr] : undefined;
   }, obj);

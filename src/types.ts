@@ -25,12 +25,19 @@ export interface Piece {
 export type ActionFunction = (args: { auth: any; params: any }) => Promise<any>;
 export type TriggerFunction = (args: { auth: any; lastProcessedId?: any; params?: any; epoch?: number }) => Promise<any>;
 
+export type StepType = 'action' | 'parallel' | 'condition' | 'loop' | 'wait';
+
 export interface FlowStep {
   name: string;
-  displayName?: string; // Human readable name (e.g. "Gmail Send Email")
-  piece: string;
-  action: string;
-  params: any;
+  type?: StepType; // defaults to 'action'
+  displayName?: string;
+  piece?: string; // required for 'action'
+  action?: string; // required for 'action'
+  params?: any;
+  branches?: FlowStep[][]; // for 'parallel'
+  condition?: string; // for 'condition'
+  onTrue?: FlowStep[]; // for 'condition'
+  onFalse?: FlowStep[]; // for 'condition'
 }
 
 export interface FlowTrigger {

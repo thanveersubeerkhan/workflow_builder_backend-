@@ -1,0 +1,94 @@
+{
+  "edges": [
+    {
+      "id": "e-1-a29irh8ut",
+      "type": "custom",
+      "source": "1",
+      "target": "a29irh8ut",
+      "selected": false
+    },
+    {
+      "id": "e-a29irh8ut-end",
+      "type": "custom",
+      "source": "a29irh8ut",
+      "target": "end"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "1",
+      "data": {
+        "icon": "gmail",
+        "name": "Gmail_newEmail",
+        "label": "Gmail_newEmail",
+        "piece": "gmail",
+        "action": "newEmail",
+        "appName": "Gmail",
+        "actionId": "newEmail",
+        "subLabel": "Fires when a new email is received in the inbox.",
+        "actionName": "New Email",
+        "description": "Fires when a new email is received in the inbox.",
+        "isPlaceholder": false
+      },
+      "type": "custom",
+      "measured": {
+        "width": 280,
+        "height": 82
+      },
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "selected": false
+    },
+    {
+      "id": "a29irh8ut",
+      "data": {
+        "icon": "gmail",
+        "name": "Gmail_sendEmail",
+        "label": "Gmail_sendEmail",
+        "piece": "gmail",
+        "action": "sendEmail",
+        "params": {
+          "to": "salmanbarsi8270@gmail.com",
+          "body": "New mail comes testproject",
+          "subject": "New mail comes testproject",
+          "connection": "gmail"
+        },
+        "appName": "Gmail",
+        "actionId": "sendEmail",
+        "subLabel": "Sends a new email.",
+        "actionName": "Send Email",
+        "description": "Sends a new email.",
+        "isPlaceholder": false
+      },
+      "type": "custom",
+      "measured": {
+        "width": 280,
+        "height": 82
+      },
+      "position": {
+        "x": 0,
+        "y": 200
+      },
+      "selected": false
+    },
+    {
+      "id": "end",
+      "data": {
+        "label": "End"
+      },
+      "type": "end",
+      "dragging": false,
+      "measured": {
+        "width": 60,
+        "height": 38
+      },
+      "position": {
+        "x": 110,
+        "y": 451
+      },
+      "selected": false
+    }
+  ]
+}

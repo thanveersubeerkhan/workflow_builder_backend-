@@ -199,6 +199,32 @@ io.on('connection', (socket) => {
       }
   });
 
+  socket.on('run-resume', async (data, callback) => {
+      const { runId, flowId } = data;
+      console.log(`Socket ${socket.id} requested resume for run ${runId}`);
+      try {
+        const flowRes = await pool.query('SELECT * FROM flows WHERE id = $1', [flowId]);
+        if (flowRes.rowCount === 0) return callback?.({ error: 'Flow not found' });
+
+        const flow = flowRes.rows[0];
+
+        // We don't await this as it could take time
+        executeFlow({
+            runId,
+            flowId: flow.id,
+            userId: flow.user_id,
+            definition: flow.definition,
+            onEvent: (event, data) => {
+                io.to(`flow:${flowId}`).emit(event, data);
+            }
+        }).catch(err => console.error(`[Socket] Resume error for ${runId}:`, err.message));
+
+        if (callback) callback({ success: true, message: 'Resume started' });
+      } catch (error: any) {
+          if (callback) callback({ error: error.message });
+      }
+  });
+
   // Relay event from Worker -> Server -> Client
   socket.on('worker-relay', (payload) => {
       const { room, event, data } = payload;
@@ -329,11 +355,12 @@ app.post('/api/worker-relay', (req, res) => {
  * Kicks off a parallel scan for fire conditions.
  */
 app.post('/api/internal/scan-trigger', async (req, res) => {
-  console.log('[Internal] ⏰ Received scan-trigger request');
+  console.log('[Internal] ⏰ Incoming: scan-trigger from Trigger.dev');
   
   // Fire and forget (Non-blocking)
   performTriggerScan()
-    .catch(err => console.error('[Internal] Scan Error:', err.message));
+    .catch(err => console.error('[Internal] ❌ Scan Error:', err.message))
+    .finally(() => console.log('______________________________________________________________________'));
   
   res.status(202).json({ success: true, message: 'Scan started asynchronously' });
 });
@@ -343,16 +370,18 @@ app.post('/api/internal/scan-trigger', async (req, res) => {
  * Runs the actual flow engine logic.
  */
 app.post('/api/internal/execute-flow', async (req, res) => {
-  const { flowId, userId, definition, triggerData } = req.body;
+  const { runId, flowId, userId, definition, triggerData } = req.body;
   
   if (!flowId || !userId || !definition) {
     return res.status(400).json({ error: 'Missing required fields: flowId, userId, definition' });
   }
 
-  console.log(`[Internal] 🚀 Executing Flow: ${flowId}`);
+  console.log(`[Internal] 🚀 Incoming: execute-flow for Flow: ${flowId}`);
+  console.log(`[Internal] 📡 Context:`, JSON.stringify({ runId, userId, triggerData }, null, 2));
 
   // Fire and forget (Non-blocking)
   executeFlow({
+    runId,
     flowId,
     userId,
     definition,
@@ -362,7 +391,9 @@ app.post('/api/internal/execute-flow', async (req, res) => {
       io.to(`flow:${flowId}`).emit(event, data);
     }
   }).catch(err => {
-    console.error(`[Internal] Error executing flow ${flowId}:`, err.message);
+    console.error(`[Internal] ❌ Execution Error for ${flowId}:`, err.message);
+  }).finally(() => {
+    console.log('______________________________________________________________________');
   });
 
   res.status(202).json({ success: true, message: 'Execution started asynchronously' });
@@ -373,11 +404,12 @@ app.post('/api/internal/execute-flow', async (req, res) => {
  * Finds tokens expiring in < 15m and dispatches them to the queue.
  */
 app.post('/api/internal/refresh-tokens-scan', async (req, res) => {
-  console.log('[Internal] ⏰ Received refresh-tokens-scan request');
+  console.log('[Internal] ⏰ Incoming: refresh-tokens-scan from Trigger.dev');
   
   // Fire and forget (Non-blocking)
   performTokenRefresh()
-    .catch(err => console.error('[Internal] Refresh Scan Error:', err.message));
+    .catch(err => console.error('[Internal] ❌ Refresh Scan Error:', err.message))
+    .finally(() => console.log('______________________________________________________________________'));
   
   res.status(202).json({ success: true, message: 'Refresh scan started asynchronously' });
 });
@@ -393,11 +425,12 @@ app.post('/api/internal/perform-token-refresh', async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields: userId, service' });
   }
 
-  console.log(`[Internal] 🔄 Refreshing Token for: ${userId} - ${service}`);
+  console.log(`[Internal] 🔄 Incoming: perform-token-refresh for: ${userId} - ${service}`);
 
   // We will refactor performTokenRefresh to handle single target if passed
   performTokenRefresh({ userId, service })
-    .catch(err => console.error(`[Internal] Refresh Execution Error for ${service}:`, err.message));
+    .catch(err => console.error(`[Internal] ❌ Refresh Execution Error for ${service}:`, err.message))
+    .finally(() => console.log('______________________________________________________________________'));
 
   res.status(202).json({ success: true, message: 'Token refresh started asynchronously' });
 });
