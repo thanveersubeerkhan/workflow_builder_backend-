@@ -15,6 +15,7 @@ interface ExecuteFlowArgs {
 export async function executeFlow({ runId: initialRunId, flowId, userId, definition, triggerData, onEvent }: ExecuteFlowArgs) {
   const flowStartTime = Date.now();
   console.log(`[Executor] 🚀 Starting Flow: ${flowId} (RunId: ${initialRunId || 'new'})`);
+  console.log(`[Executor] 🛡️  Logic Engine Path: Persistence Guard v2.0 (Synchronized Queue)`);
   if (triggerData) console.log(`[Executor] 📦 Trigger Data:`, JSON.stringify(triggerData, null, 2));
   
   let runId = initialRunId;
@@ -61,25 +62,54 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
 
   // --- Synchronized Persistence Helper ---
   let updateQueue = Promise.resolve();
+  
+  const statusPriority: Record<string, number> = {
+      'pending': 0,
+      'running': 1,
+      'waiting': 2,
+      'rejected': 3,
+      'failed': 3,
+      'success': 3
+  };
+
   async function persistState(status: string = 'running', overrideIndex?: number) {
       const currentIndex = overrideIndex ?? lastStepIndex;
-      // Capture state snapshots IMMEDIATELY to prevent race conditions before stringification
-      const contextSnapshot = JSON.stringify(context);
-      const logsSnapshot = JSON.stringify(logs);
-      const resultsSnapshot = JSON.stringify(context.steps);
+      
+      // 1. Capture snapshots IMMEDIATELY (Deep clone to prevent mutation during queue wait)
+      const contextSnapshot = JSON.parse(JSON.stringify(context));
+      const logsSnapshot = JSON.parse(JSON.stringify(logs));
+      const resultsSnapshot = JSON.parse(JSON.stringify(context.steps));
 
       updateQueue = updateQueue.then(async () => {
           try {
+              // 2. Status Guard: Fetch current DB status to check precedence
+              const currentStatusRes = await pool.query('SELECT status FROM flow_runs WHERE id = $1', [runId]);
+              const dbStatus = currentStatusRes.rows[0]?.status || 'pending';
+
+              // 🛡️ Precedence Rule: Only update status if the new one has higher or equal priority.
+              const newPriority = statusPriority[status] ?? 0;
+              const currentPriority = statusPriority[dbStatus] ?? 0;
+
+              let finalStatus = status;
+              if (currentPriority > newPriority) {
+                  finalStatus = dbStatus;
+              }
+
+              console.log(`[Executor] 💾 Persisting State: Status=${finalStatus} (from ${status}), StepsCount=${Object.keys(contextSnapshot.steps).length}, Priority=${newPriority} vs DB Priority=${currentPriority}`);
+
               await pool.query(
                   'UPDATE flow_runs SET status = $1, logs = $2, current_context = $3, result = $4, last_step_index = $5 WHERE id = $6',
-                  [status, logsSnapshot, contextSnapshot, resultsSnapshot, currentIndex, runId]
+                  [finalStatus, JSON.stringify(logsSnapshot), JSON.stringify(contextSnapshot), JSON.stringify(resultsSnapshot), currentIndex, runId]
               );
+              console.log(`[Executor] ✅ State Persisted successfully for ${runId}`);
           } catch (err: any) {
               console.error(`[Executor] ⚠️ DB Persist Failed for ${runId}:`, err.message);
           }
       });
       return updateQueue;
   }
+
+
 
 
   if (onEvent) onEvent('flow-start', { flowId, runId });
@@ -103,7 +133,7 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
       
       // 🚀 SKIP LOGIC: If step is already completed, don't run it again
       if (context.completed_steps && context.completed_steps[step.name]) {
-        console.log(`[Executor] ⏭️ Skipping already COMPLETED step: ${step.name}`);
+        console.log(`[Executor] ⏭️ Skipping Step: ${step.name}${steps !== definition.steps ? ' (nested)' : ''}`);
         continue;
       }
 
@@ -134,9 +164,34 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
             console.log(`[Executor] 🌪️ Parallel Block "${step.name}" branches complete results:`, results);
             if (results.includes('waiting')) return 'waiting';
             if (results.includes('failed')) return 'failed';
-            if (results.includes('rejected')) return 'rejected'; // Added rejected check
+            if (results.includes('rejected')) return 'rejected';
 
-            context.steps[step.name] = { data: { status: 'parallel-complete' } };
+            // Store summary and combined outputs in parallel step data
+            const successCount = results.filter(r => r === 'success').length;
+            const branchOutputs = (step.branches || []).map((branch: FlowStep[]) => {
+                const lastStep = branch[branch.length - 1];
+                return lastStep ? context.steps[lastStep.name]?.data : null;
+            });
+
+            console.log(`[Executor] 🌪️ Parallel Block "${step.name}" summary: ${successCount}/${step.branches?.length} succeeded.`);
+            
+            context.steps[step.name] = { 
+                data: { 
+                    status: 'parallel-complete',
+                    branchCount: step.branches?.length || 0,
+                    successCount: successCount,
+                    branchResults: branchOutputs
+                } 
+            };
+            
+            // Mark structural step as completed
+            if (!context.completed_steps) context.completed_steps = {};
+            context.completed_steps[step.name] = true;
+
+            // Checkpoint: save parallel block result immediately
+            const currentTopIndex = steps === definition.steps ? i : lastStepIndex;
+            console.log(`[Executor] 🌪️ Saving Parallel Block result for ${step.name}...`);
+            await persistState('running', currentTopIndex);
         }
         else if (step.type === 'condition') {
             const isTrue = evaluateCondition(step.condition || 'false', context);
@@ -147,6 +202,14 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
                 if (bStatus !== 'success') return bStatus;
             }
             context.steps[step.name] = { data: { result: isTrue } };
+
+            // Mark structural step as completed
+            if (!context.completed_steps) context.completed_steps = {};
+            context.completed_steps[step.name] = true;
+
+            // Checkpoint: save condition result immediately
+            const currentTopIndex = steps === definition.steps ? i : lastStepIndex;
+            await persistState('running', currentTopIndex);
         }
         else if (step.type === 'loop') {
             const items = resolveVariables(step.params?.items, context);
@@ -162,6 +225,11 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
                 }
             }
             context.steps[step.name] = { data: { iterations: items?.length || 0 } };
+            
+            // Mark structural step as completed
+            if (!context.completed_steps) context.completed_steps = {};
+            context.completed_steps[step.name] = true;
+
             console.log(`[Executor] 🔄 Loop "${step.name}" complete.`);
         }
         else if (step.type === 'wait') {
@@ -187,7 +255,16 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
 
                 console.log(`[Executor] ⏭️ Resuming past WAIT step: ${step.name}`);
                 delete context.waited_steps[step.name];
+                
+                // Ensure it stays completed so we skip it if we re-run the tree
+                if (!context.completed_steps) context.completed_steps = {};
+                context.completed_steps[step.name] = true;
+                
                 context.steps[step.name] = { data: { status: 'resumed' } };
+                
+                // CRITICAL: Save resumption state IMMEDIATELY so we don't forget it
+                await persistState('running', lastStepIndex);
+                
                 console.log(`[Executor] ✅ Wait "${step.name}" resumed. Continuing.`);
                 continue; 
             }
@@ -198,7 +275,7 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
             // Mark this step as waiting (true means pending approval)
             if (!context.waited_steps) context.waited_steps = {};
             context.waited_steps[step.name] = true;
-
+            
             await persistState('waiting', lastStepIndex);
             
             if (onEvent) onEvent('run-waiting', { runId, stepName: step.name });
@@ -211,7 +288,7 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
         // Update local lastStepIndex so nested steps use the latest top-level progress
         if (steps === definition.steps) lastStepIndex = i;
 
-        persistState('running', currentTopIndex);
+        await persistState('running', currentTopIndex);
 
         // Mark as completed so we skip it on future resumes
         if (!context.completed_steps) context.completed_steps = {};
