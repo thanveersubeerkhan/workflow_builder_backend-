@@ -34,6 +34,14 @@ async function setup() {
     ALTER TABLE integrations ALTER COLUMN refresh_token DROP NOT NULL;
     ALTER TABLE integrations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT now();
 
+    -- Ensure unique constraint exists for ON CONFLICT
+    DO $$ 
+    BEGIN 
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'integrations_user_id_service_unique') THEN
+        ALTER TABLE integrations ADD CONSTRAINT integrations_user_id_service_unique UNIQUE (user_id, service);
+      END IF;
+    END $$;
+
     CREATE TABLE IF NOT EXISTS flows (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID REFERENCES users(id) ON DELETE CASCADE,
