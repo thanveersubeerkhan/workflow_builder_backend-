@@ -6,7 +6,6 @@ export const disconnectRouter = express.Router();
 
 disconnectRouter.delete('/:userId/:service', async (req, res) => {
   const { userId, service } = req.params;
-
   try {
     const integration = await getIntegration(userId, service);
     if (!integration) {

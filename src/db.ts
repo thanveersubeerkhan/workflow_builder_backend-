@@ -24,6 +24,7 @@ export function encrypt(text: string): string {
 }
 
 export function decrypt(text: string): string {
+  if (!text) return '';
   const parts = text.split(':');
   const iv = Buffer.from(parts[0], 'hex');
   const authTag = Buffer.from(parts[1], 'hex');
@@ -77,11 +78,7 @@ export async function saveIntegration(data: GoogleIntegration): Promise<void> {
   const finalAccessToken = access_token || accessToken;
   const finalExpiryDate = expiry_date || expiryDate;
 
-  if (!finalRefreshToken) {
-    throw new Error('Missing refresh_token in saveIntegration');
-  }
-
-  const encryptedRefresh = encrypt(finalRefreshToken);
+  const encryptedRefresh = finalRefreshToken ? encrypt(finalRefreshToken) : null;
 
   const query = `
     INSERT INTO google_integrations (user_id, service, refresh_token, access_token, expiry_date, scopes)

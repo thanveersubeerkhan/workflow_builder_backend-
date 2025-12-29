@@ -72,6 +72,7 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
       'success': 3
   };
 
+
   async function persistState(status: string = 'running', overrideIndex?: number) {
       const currentIndex = overrideIndex ?? lastStepIndex;
       
@@ -294,6 +295,8 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
         if (!context.completed_steps) context.completed_steps = {};
         context.completed_steps[step.name] = true;
 
+
+
         if (onEvent) {
             onEvent('step-run-finish', {
                 nodeId: step.name,
@@ -313,6 +316,7 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
         
         const currentTopIndex = steps === definition.steps ? i - 1 : lastStepIndex;
         await persistState('failed', currentTopIndex);
+
         
         if (onEvent) onEvent('step-failure', { stepName: step.name, error: errorDetail });
         if (onEvent) {
@@ -366,6 +370,8 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
     logs.push(`[${new Date().toISOString()}] 💀 CRITICAL ERROR: ${error.message}`);
     
     await persistState('failed');
+
+
 
     if (onEvent) onEvent('run-complete', { flowId, runId, status: 'failed', error: error.message });
     return { success: false, error: error.message, runId };
