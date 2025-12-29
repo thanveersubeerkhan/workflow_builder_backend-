@@ -139,6 +139,20 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
 
   if (onEvent) onEvent('flow-start', { flowId, runId });
 
+  // RE-HYDRATE UI: Emit events for already completed steps so the frontend fills them in
+  if (context.completed_steps && onEvent) {
+      Object.keys(context.completed_steps).forEach(stepName => {
+          if (context.steps[stepName]?.data && stepName !== 'trigger') {
+              onEvent('step-run-finish', {
+                  nodeId: stepName,
+                  status: 'success',
+                  output: context.steps[stepName].data,
+                  duration: 0
+              });
+          }
+      });
+  }
+
   // Emit Trigger Events (Start -> Finish) for UI feedback
   if (onEvent && definition.trigger && definition.trigger.nodeId) {
       onEvent('step-run-start', { nodeId: definition.trigger.nodeId, status: 'running' });

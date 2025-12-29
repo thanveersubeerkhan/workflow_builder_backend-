@@ -113,10 +113,15 @@ export const gmailPiece: Piece = {
   triggers: {
     newEmail: async ({ auth, lastProcessedId, params }) => {
       const gmail = google.gmail({ version: 'v1', auth });
+      
+      const folder = params?.folder || 'INBOX';
+      const userQuery = params?.q || '';
+      const query = `label:${folder} ${userQuery}`.trim();
+      
       const res = await gmail.users.messages.list({
         userId: 'me',
         maxResults: 5,
-        q: params?.q || '',
+        q: query,
       });
 
       const messages = res.data.messages || [];
@@ -126,7 +131,7 @@ export const gmailPiece: Piece = {
       if (typeof lastProcessedId === 'string') {
         effectiveLastId = lastProcessedId;
       } else if (lastProcessedId && typeof lastProcessedId === 'object') {
-        effectiveLastId = lastProcessedId.lastMessageId || lastProcessedId.runId; // runId as fallback if users use that key
+        effectiveLastId = lastProcessedId.lastMessageId || lastProcessedId.runId; 
       }
 
       // If no messages or the latest is already processed, nothing to do
@@ -163,8 +168,6 @@ export const gmailPiece: Piece = {
       const subject = headers.find(h => h.name?.toLowerCase() === 'subject')?.value || '';
       const from = headers.find(h => h.name?.toLowerCase() === 'from')?.value || '';
       const body = extractBody(message.payload) || message.snippet || '';
-
-      console.log(`[Gmail] Trigger newEmail result: subject="${subject}", bodyLength=${body.length}`);
 
       return {
         newLastId: { lastMessageId: targetMessage.id },

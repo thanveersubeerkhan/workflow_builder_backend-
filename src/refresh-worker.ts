@@ -1,4 +1,5 @@
 import { getAllIntegrations, getIntegration, saveIntegration, withAdvisoryLock } from './db.js';
+import { refreshGitHubAccessToken } from './github.js';
 import { createOAuthClient } from './google.js';
 import { tasks } from "@trigger.dev/sdk/v3";
 
@@ -8,7 +9,7 @@ interface RefreshOptions {
 }
 
 /**
- * Proactively refreshes Google OAuth tokens.
+ * Proactively refreshes Google & GitHub OAuth tokens.
  * Refactored for "Double-Loopback" architecture.
  */
 export async function performTokenRefresh(options: RefreshOptions = {}) {
@@ -21,6 +22,28 @@ export async function performTokenRefresh(options: RefreshOptions = {}) {
     try {
       const integration = await getIntegration(userId, service);
       if (!integration) throw new Error(`Integration not found for ${userId}/${service}`);
+
+      // GitHub Refresh Logic
+      if (service === 'github') {
+         // If no refresh token exists, we can't do anything (legacy PAT or old auth)
+         if (!integration.refresh_token) {
+             console.log(`[Refresh] ⚠️ Skipping GitHub refresh: No refresh token available.`);
+             return { success: false, reason: 'no_refresh_token' };
+         }
+
+         const newTokens = await refreshGitHubAccessToken(integration.refresh_token);
+         
+         await saveIntegration({
+            user_id: userId,
+            service,
+            refresh_token: newTokens.refresh_token || integration.refresh_token, // Use new if rotated, else keep old
+            access_token: newTokens.access_token,
+            expiry_date: newTokens.expiry_date,
+            scopes: integration.scopes
+         });
+         console.log(`[Refresh] ✅ GitHub Token refreshed successfully (User: ${userId}).`);
+         return { success: true };
+      }
 
       const client = createOAuthClient();
       client.setCredentials({ refresh_token: integration.refresh_token });

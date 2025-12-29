@@ -59,7 +59,7 @@ export async function performTriggerScan(options: ScanOptions = {}) {
 
   try {
     const now = Date.now();
-    const LOOK_AHEAD_MS = 15 * 1000; // 15 seconds (Safe overlap for 5s scanner intervals)
+    const LOOK_AHEAD_MS = 30 * 1000; // 15 seconds (Safe overlap for 5s scanner intervals)
     const windowEnd = now + LOOK_AHEAD_MS;
     const startTime = Date.now();
     console.log(`[Scanner] ⏰ Starting Scan. Window End: ${new Date(windowEnd).toLocaleTimeString()}`);

@@ -97,16 +97,22 @@ export async function runAction({ userId, service, actionName, params }: RunActi
       auth = client;
     }
   } else {
-    console.warn(`[Engine] No integration found for ${service} and user ${userId}. Proceeding without auth (some pieces may fail).`);
+    // Only warn if it's NOT the http piece, which doesn't usually require storage-based auth
+    if (service !== 'http') {
+        console.warn(`[Engine] No integration found for ${service} and user ${userId}. Proceeding without auth (some pieces may fail).`);
+    }
   }
 
   // 4. Run Action with detailed error wrapping
   try {
     return await action({ auth, params });
   } catch (error: any) {
+    if (error.response?.data?.error === 'invalid_grant') {
+        console.error(`[Engine] ❌ CRITICAL AUTH ERROR: Refresh Token Revoked/Invalid for ${service}. User must reconnect.`);
+    }
     console.error(`[Engine] Error executing piece ${service}.${actionName}:`, error.message);
     if (error.response?.data) {
-      console.error(`[Engine] Piece API Response Error Data:`, JSON.stringify(error.response.data));
+      console.error(`[Engine] Piece API Response Error Data:`, JSON.stringify(error.response.data, null, 2));
     }
     throw error;
   }

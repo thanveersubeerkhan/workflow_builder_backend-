@@ -442,6 +442,56 @@ app.post('/api/flows/:flowId/runs/:runId/reject', async (req, res) => {
     }
 });
 
+app.post('/api/runs/:runId/retry', async (req, res) => {
+  const { runId } = req.params;
+  console.log(`[API] Retry requested for run ${runId}`);
+  try {
+    const runRes = await pool.query('SELECT * FROM flow_runs WHERE id = $1', [runId]);
+    if (runRes.rowCount === 0) return res.status(404).json({ error: 'Run not found' });
+    const run = runRes.rows[0];
+
+    const flowRes = await pool.query('SELECT * FROM flows WHERE id = $1', [run.flow_id]);
+    if (flowRes.rowCount === 0) return res.status(404).json({ error: 'Flow not found' });
+    const flow = flowRes.rows[0];
+
+    // executeFlow handles resumption automatically if runId is passed
+    const runResult = await executeFlow({
+        runId: run.id,
+        flowId: flow.id,
+        userId: flow.user_id,
+        definition: flow.definition,
+        onEvent: (event, data) => {
+           io.to(`flow:${flow.id}`).emit(event, data);
+        }
+    });
+
+    res.json({ success: true, runId: run.id, status: 'retrying' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+app.all('/api/test-http', (req, res) => {
+  console.log('[Dummy API] Received Request:', {
+    method: req.method,
+    headers: req.headers,
+    body: req.body,
+    query: req.query
+  });
+  
+  res.json({
+    success: true,
+    message: 'Request received successfully',
+    echo: {
+      method: req.method,
+      headers: req.headers,
+      body: req.body,
+      query: req.query,
+      timestamp: new Date().toISOString()
+    }
+  });
+});
+
+
 app.get('/api/connections/:userId', async (req, res) => {
   const { userId } = req.params;
   try {
@@ -610,9 +660,16 @@ app.get('/api/github/issues', async (req, res) => {
 
 app.get('/health', (req, res) => res.send('OK'));
 
+// --- Internal Polling (Dev Mode / Self-Hosted) ---
+// Ensure triggers are scanned even if external scheduler isn't configured
+setInterval(() => {
+  performTriggerScan().catch(err => console.error('[Internal Poller] Scan failed:', err.message));
+}, 10000); // Check every 10 seconds
+
 httpServer.listen(PORT, () => {
   console.log(`🚀 API Server running on port ${PORT}`);
   console.log(`🔌 Socket.IO enabled`);
+  console.log(`⏰ Internal Trigger Poller started (10s interval)`);
 });
 
 const shutdown = async (signal: string) => {
