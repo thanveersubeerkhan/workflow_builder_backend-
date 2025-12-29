@@ -59,8 +59,13 @@ export async function getOrCreateUser(email: string, name?: string, pictureUrl?:
   return insert.rows[0];
 }
 
-export async function saveIntegration(data: GoogleIntegration): Promise<void> {
+// SAVES or UPDATES an integration
+// If 'id' is provided in data, updates that specific record.
+// If NOT provided, checks if ONE exists for (user, service). If so, updates it (legacy compat).
+// Otherwise, inserts a NEW record.
+export async function saveIntegration(data: GoogleIntegration & { id?: string, name?: string }): Promise<void> {
   const { 
+    id,
     user_id, 
     userId, 
     service, 
@@ -70,7 +75,8 @@ export async function saveIntegration(data: GoogleIntegration): Promise<void> {
     accessToken, 
     expiry_date, 
     expiryDate, 
-    scopes 
+    scopes,
+    name
   } = data as any;
   
   const finalUserId = user_id || userId;
@@ -80,24 +86,57 @@ export async function saveIntegration(data: GoogleIntegration): Promise<void> {
 
   const encryptedRefresh = finalRefreshToken ? encrypt(finalRefreshToken) : null;
 
-  const query = `
-    INSERT INTO integrations (user_id, service, refresh_token, access_token, expiry_date, scopes)
-    VALUES ($1, $2, $3, $4, $5, $6)
-    ON CONFLICT (user_id, service) 
-    DO UPDATE SET 
-      refresh_token = EXCLUDED.refresh_token,
-      access_token = EXCLUDED.access_token,
-      expiry_date = EXCLUDED.expiry_date,
-      scopes = EXCLUDED.scopes,
-      updated_at = now()
-  `;
+  // 1. Try to find target ID
+  let targetId = id;
+  if (!targetId) {
+      // Legacy fallback: Find latest existing integration for this user+service
+      const existing = await pool.query(
+          'SELECT id FROM integrations WHERE user_id = $1 AND service = $2 ORDER BY created_at DESC LIMIT 1',
+          [finalUserId, service]
+      );
+      if (existing.rows.length > 0) {
+          targetId = existing.rows[0].id;
+      }
+  }
 
-  await pool.query(query, [finalUserId, service, encryptedRefresh, finalAccessToken, finalExpiryDate, scopes]);
+  if (targetId) {
+    // UPDATE existing
+    const query = `
+        UPDATE integrations SET
+            refresh_token = COALESCE($1, refresh_token),
+            access_token = COALESCE($2, access_token),
+            expiry_date = COALESCE($3, expiry_date),
+            scopes = COALESCE($4, scopes),
+            name = COALESCE($5, name),
+            updated_at = now()
+        WHERE id = $6
+    `;
+    await pool.query(query, [encryptedRefresh, finalAccessToken, finalExpiryDate, scopes, name, targetId]);
+  } else {
+    // INSERT new
+    const query = `
+      INSERT INTO integrations (user_id, service, refresh_token, access_token, expiry_date, scopes, name)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `;
+    const defaultName = name || `${service.charAt(0).toUpperCase() + service.slice(1)} Account`;
+    await pool.query(query, [finalUserId, service, encryptedRefresh, finalAccessToken, finalExpiryDate, scopes, defaultName]);
+  }
 }
 
+export async function getIntegrationById(id: string): Promise<GoogleIntegration | null> {
+    const res = await pool.query('SELECT * FROM integrations WHERE id = $1', [id]);
+    if (res.rows.length === 0) return null;
+    const integration = res.rows[0];
+    return {
+      ...integration,
+      refresh_token: decrypt(integration.refresh_token)
+    };
+}
+
+// Deprecated-ish: Returns the LATEST added integration for backward compat
 export async function getIntegration(userId: string, service: string): Promise<GoogleIntegration | null> {
   const res = await pool.query(
-    'SELECT * FROM integrations WHERE user_id = $1 AND service = $2',
+    'SELECT * FROM integrations WHERE user_id = $1 AND service = $2 ORDER BY created_at DESC LIMIT 1',
     [userId, service]
   );
   
@@ -111,10 +150,16 @@ export async function getIntegration(userId: string, service: string): Promise<G
 }
 
 export async function deleteIntegration(userId: string, service: string): Promise<void> {
-  await pool.query(
-    'DELETE FROM integrations WHERE user_id = $1 AND service = $2',
-    [userId, service]
-  );
+    // Default to deleting ALL for this service? Or just let it be?
+    // Safer to delete all to clean up if user requests "Disconnect"
+    await pool.query(
+      'DELETE FROM integrations WHERE user_id = $1 AND service = $2',
+      [userId, service]
+    );
+}
+
+export async function deleteIntegrationById(id: string): Promise<void> {
+    await pool.query('DELETE FROM integrations WHERE id = $1', [id]);
 }
 
 export async function getAllIntegrations(): Promise<GoogleIntegration[]> {

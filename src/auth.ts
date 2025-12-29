@@ -104,7 +104,7 @@ authRouter.get('/connect/:service', (req, res) => {
         access_type: 'offline',
         prompt: 'consent',
         scope: SERVICE_SCOPES[service],
-        state: JSON.stringify({ userId, service, callbackUrl })
+        state: JSON.stringify({ userId, service, callbackUrl, name: req.query.name })
       });
 
   res.redirect(url);
@@ -118,7 +118,7 @@ authRouter.get('/callback/:service', async (req: any, res: any) => {
     if (!state) {
       return res.status(400).send('Missing state parameter. Please start the connection from the /auth/connect route.');
     }
-    const { userId, service: stateService, callbackUrl } = JSON.parse(state as string);
+    const { userId, service: stateService, callbackUrl, name } = JSON.parse(state as string);
 
     if (service !== stateService) {
       return res.status(400).send('Service mismatch');
@@ -153,7 +153,8 @@ authRouter.get('/callback/:service', async (req: any, res: any) => {
       refresh_token: tokens.refresh_token!,
       access_token: tokens.access_token ?? undefined,
       expiry_date: tokens.expiry_date ?? undefined,
-      scopes: tokens.scope ?? undefined
+      scopes: tokens.scope ?? undefined,
+      name // Pass the name if provided
     });
 
     // Redirect to specified path (appended to frontend URL) or default integration page

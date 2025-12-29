@@ -494,15 +494,35 @@ app.all('/api/test-http', (req, res) => {
 
 app.get('/api/connections/:userId', async (req, res) => {
   const { userId } = req.params;
+  console.log(`[API] Fetching connections for user: ${userId}`);
   try {
     const result = await pool.query(
-      'SELECT service, created_at FROM integrations WHERE user_id = $1',
+      'SELECT id, service, name, created_at FROM integrations WHERE user_id = $1 ORDER BY created_at DESC',
       [userId]
     );
+    console.log(`[API] Found ${result.rowCount} connections for user: ${userId}`);
     res.json(result.rows);
   } catch (error: any) {
+    console.error(`[API] Error fetching connections for ${userId}:`, error.message);
     res.status(500).json({ error: error.message });
   }
+});
+
+app.delete('/api/connections/:id', async (req, res) => {
+    const { id } = req.params;
+    console.log(`[API] Received request to DELETE connection: ${id}`);
+    try {
+        const result = await pool.query('DELETE FROM integrations WHERE id = $1 RETURNING *', [id]);
+        if (result.rowCount === 0) {
+            console.warn(`[API] No connection found with ID: ${id}`);
+            return res.status(404).json({ error: 'Connection not found' });
+        }
+        console.log(`[API] Successfully deleted connection: ${id} (${result.rows[0].service})`);
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error(`[API] Error deleting connection ${id}:`, error.message);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 

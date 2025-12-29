@@ -1,4 +1,4 @@
-import { getAllIntegrations, getIntegration, saveIntegration, withAdvisoryLock } from './db.js';
+import { getAllIntegrations, getIntegration, getIntegrationById, saveIntegration, withAdvisoryLock } from './db.js';
 import { refreshGitHubAccessToken } from './github.js';
 import { createOAuthClient } from './google.js';
 import { tasks } from "@trigger.dev/sdk/v3";
@@ -6,6 +6,7 @@ import { tasks } from "@trigger.dev/sdk/v3";
 interface RefreshOptions {
   userId?: string;
   service?: string;
+  integrationId?: string;
 }
 
 /**
@@ -13,18 +14,28 @@ interface RefreshOptions {
  * Refactored for "Double-Loopback" architecture.
  */
 export async function performTokenRefresh(options: RefreshOptions = {}) {
-  const { userId, service } = options;
+  const { userId, service, integrationId } = options;
   const startTime = Date.now();
 
   // CASE 1: Targeted Refresh (The Execution Muscle)
-  if (userId && service) {
-    console.log(`[Refresh] 🔄 Targeted Execution: ${userId} - ${service}`);
+  if ((userId && service) || (integrationId)) {
+    console.log(`[Refresh] 🔄 Targeted Execution: ${integrationId || (userId + '-' + service)}`);
     try {
-      const integration = await getIntegration(userId, service);
-      if (!integration) throw new Error(`Integration not found for ${userId}/${service}`);
+      let integration;
+      if (integrationId) {
+          integration = await getIntegrationById(integrationId);
+      } else if (userId && service) {
+          integration = await getIntegration(userId, service);
+      }
+
+      if (!integration) throw new Error(`Integration not found`);
+
+      // Ensure we have the user_id and service from the fetched integration if we didn't start with it
+      const currentUserId = integration.user_id;
+      const currentService = integration.service;
 
       // GitHub Refresh Logic
-      if (service === 'github') {
+      if (currentService === 'github') {
          // If no refresh token exists, we can't do anything (legacy PAT or old auth)
          if (!integration.refresh_token) {
              console.log(`[Refresh] ⚠️ Skipping GitHub refresh: No refresh token available.`);
@@ -34,14 +45,15 @@ export async function performTokenRefresh(options: RefreshOptions = {}) {
          const newTokens = await refreshGitHubAccessToken(integration.refresh_token);
          
          await saveIntegration({
-            user_id: userId,
-            service,
-            refresh_token: newTokens.refresh_token || integration.refresh_token, // Use new if rotated, else keep old
+            id: integration.id,
+            user_id: currentUserId,
+            service: currentService,
+            refresh_token: newTokens.refresh_token || integration.refresh_token, 
             access_token: newTokens.access_token,
             expiry_date: newTokens.expiry_date,
             scopes: integration.scopes
          });
-         console.log(`[Refresh] ✅ GitHub Token refreshed successfully (User: ${userId}).`);
+         console.log(`[Refresh] ✅ GitHub Token refreshed successfully for ${integration.id}.`);
          return { success: true };
       }
 
@@ -50,17 +62,18 @@ export async function performTokenRefresh(options: RefreshOptions = {}) {
       const { credentials } = await client.refreshAccessToken();
 
       await saveIntegration({
-        user_id: userId,
-        service,
+        id: integration.id,
+        user_id: currentUserId,
+        service: currentService,
         refresh_token: integration.refresh_token,
         access_token: credentials.access_token ?? undefined,
         expiry_date: credentials.expiry_date ?? undefined,
         scopes: integration.scopes
       });
-      console.log(`[Refresh] ✅ Token refreshed successfully for ${service} (User: ${userId}). Duration: ${Date.now() - startTime}ms`);
+      console.log(`[Refresh] ✅ Token refreshed successfully for ${currentService} (ID: ${integration.id}). Duration: ${Date.now() - startTime}ms`);
       return { success: true };
     } catch (err: any) {
-      console.error(`[Refresh] ❌ Failed to refresh ${service} for ${userId}:`, err.message);
+      console.error(`[Refresh] ❌ Failed to refresh ${integrationId}:`, err.message);
       throw err;
     }
   }
@@ -82,9 +95,10 @@ export async function performTokenRefresh(options: RefreshOptions = {}) {
           console.log(`[Refresh] 🚨 Token Expiring: ${integration.user_id} - ${integration.service} (Expires in ${Math.round(timeUntilExpiry/1000/60)}m)`);
           
           // DISPATCH to Trigger.dev Queue
-          console.log(`[Refresh] 🚀 Dispatching loopback refresh for ${integration.user_id}...`);
+          console.log(`[Refresh] 🚀 Dispatching loopback refresh for ${integration.id}...`);
           try {
             await tasks.trigger("token-refresh-executor", {
+              integrationId: integration.id, // Explicit ID
               userId: integration.user_id,
               service: integration.service
             });
