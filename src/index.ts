@@ -37,14 +37,29 @@ app.get('/api/services', async (req: express.Request, res: express.Response) => 
     const servicesMetadata = metadataRes.rows;
 
     const dbRes = await pool.query(
-      'SELECT service FROM google_integrations WHERE user_id = $1',
+      'SELECT id, service, external_id, external_username, external_avatar, created_at FROM integrations WHERE user_id = $1 ORDER BY created_at DESC',
       [userId]
     );
-    const connectedServices = new Set(dbRes.rows.map(row => row.service));
+    
+    // Group integrations by service
+    const integrationsByService: Record<string, any[]> = {};
+    for (const integration of dbRes.rows) {
+        if (!integrationsByService[integration.service]) {
+            integrationsByService[integration.service] = [];
+        }
+        integrationsByService[integration.service].push({
+            id: integration.id,
+            externalId: integration.external_id,
+            username: integration.external_username,
+            avatarUrl: integration.external_avatar,
+            connectedAt: integration.created_at
+        });
+    }
 
     const services = servicesMetadata.map(service => ({
       ...service,
-      connected: connectedServices.has(service.id)
+      connected: !!integrationsByService[service.id], // True if at least one account connected
+      accounts: integrationsByService[service.id] || [] // List of all connected accounts
     }));
 
     res.json({ success: true, data: services });

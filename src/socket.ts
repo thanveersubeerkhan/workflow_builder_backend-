@@ -6,7 +6,7 @@ import dotenv from 'dotenv';
 import { authRouter } from './auth.js';
 import { tokenRouter } from './tokens.js';
 import { disconnectRouter } from './disconnect.js';
-import { pool, getIntegration } from './db.js';
+import { pool, getIntegration, getIntegrationById } from './db.js';
 import { runAction } from './engine.js';
 import { mapUIToDefinition } from './flow-mapper.js';
 import { executeFlow } from './worker.js';
@@ -255,14 +255,29 @@ app.get('/api/services', async (req: express.Request, res: express.Response) => 
     const servicesMetadata = metadataRes.rows;
 
     const dbRes = await pool.query(
-      'SELECT service FROM integrations WHERE user_id = $1',
+      'SELECT id, service, external_id, external_username, external_avatar, created_at FROM integrations WHERE user_id = $1',
       [userId]
     );
-    const connectedServices = new Set(dbRes.rows.map(row => row.service));
+    
+    // Group integrations by service
+    const integrationsByService: Record<string, any[]> = {};
+    dbRes.rows.forEach(row => {
+      if (!integrationsByService[row.service]) {
+        integrationsByService[row.service] = [];
+      }
+      integrationsByService[row.service].push({
+        id: row.id,
+        externalId: row.external_id,
+        username: row.external_username,
+        avatarUrl: row.external_avatar,
+        connectedAt: row.created_at
+      });
+    });
 
     const services = servicesMetadata.map(service => ({
       ...service,
-      connected: connectedServices.has(service.id)
+      connected: !!integrationsByService[service.id],
+      accounts: integrationsByService[service.id] || []
     }));
 
     res.json({ success: true, data: services });
@@ -629,13 +644,23 @@ app.post('/api/internal/perform-token-refresh', async (req, res) => {
 
 app.get('/api/github/repos', async (req, res) => {
   const userId = req.query.userId as string;
+  const connectionId = req.query.connectionId as string;
   
   if (!userId) {
     return res.status(400).json({ error: 'userId is required' });
   }
 
   try {
-    const integration = await getIntegration(userId, 'github');
+    let integration;
+    if (connectionId) {
+        integration = await getIntegrationById(connectionId);
+        // Verify user owns this integration
+        if (integration && integration.user_id !== userId) {
+            return res.status(403).json({ error: 'Unauthorized access to this connection' });
+        }
+    } else {
+        integration = await getIntegration(userId, 'github');
+    }
     
     if (!integration || !integration.access_token) {
       return res.status(404).json({ error: 'GitHub integration not found or missing access token' });
@@ -651,6 +676,7 @@ app.get('/api/github/repos', async (req, res) => {
 
 app.get('/api/github/issues', async (req, res) => {
   const userId = req.query.userId as string;
+  const connectionId = req.query.connectionId as string;
   const repository = req.query.repository as string; // Expects "owner/repo"
   
   if (!userId || !repository) {
@@ -658,7 +684,15 @@ app.get('/api/github/issues', async (req, res) => {
   }
 
   try {
-    const integration = await getIntegration(userId, 'github');
+    let integration;
+    if (connectionId) {
+        integration = await getIntegrationById(connectionId);
+         if (integration && integration.user_id !== userId) {
+            return res.status(403).json({ error: 'Unauthorized access to this connection' });
+        }
+    } else {
+        integration = await getIntegration(userId, 'github');
+    }
     
     if (!integration || !integration.access_token) {
       return res.status(404).json({ error: 'GitHub integration not found or missing access token' });

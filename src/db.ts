@@ -61,7 +61,7 @@ export async function getOrCreateUser(email: string, name?: string, pictureUrl?:
 
 // SAVES or UPDATES an integration
 // If 'id' is provided in data, updates that specific record.
-// If NOT provided, checks if ONE exists for (user, service). If so, updates it (legacy compat).
+// If NOT provided, checks if ONE exists for (user, service, external_id). If so, updates it.
 // Otherwise, inserts a NEW record.
 export async function saveIntegration(data: GoogleIntegration & { id?: string, name?: string }): Promise<void> {
   const { 
@@ -76,7 +76,10 @@ export async function saveIntegration(data: GoogleIntegration & { id?: string, n
     expiry_date, 
     expiryDate, 
     scopes,
-    name
+    name,
+    external_id,
+    external_username,
+    external_avatar
   } = data as any;
   
   const finalUserId = user_id || userId;
@@ -89,11 +92,14 @@ export async function saveIntegration(data: GoogleIntegration & { id?: string, n
   // 1. Try to find target ID
   let targetId = id;
   if (!targetId) {
-      // Legacy fallback: Find latest existing integration for this user+service
-      const existing = await pool.query(
-          'SELECT id FROM integrations WHERE user_id = $1 AND service = $2 ORDER BY created_at DESC LIMIT 1',
-          [finalUserId, service]
-      );
+      // Find existing integration for this user + service + external_id
+      const query = external_id 
+        ? 'SELECT id FROM integrations WHERE user_id = $1 AND service = $2 AND external_id = $3 LIMIT 1'
+        : 'SELECT id FROM integrations WHERE user_id = $1 AND service = $2 ORDER BY created_at DESC LIMIT 1';
+      
+      const params = external_id ? [finalUserId, service, external_id] : [finalUserId, service];
+      const existing = await pool.query(query, params);
+      
       if (existing.rows.length > 0) {
           targetId = existing.rows[0].id;
       }
@@ -108,18 +114,43 @@ export async function saveIntegration(data: GoogleIntegration & { id?: string, n
             expiry_date = COALESCE($3, expiry_date),
             scopes = COALESCE($4, scopes),
             name = COALESCE($5, name),
+            external_username = COALESCE($6, external_username),
+            external_avatar = COALESCE($7, external_avatar),
             updated_at = now()
-        WHERE id = $6
+        WHERE id = $8
     `;
-    await pool.query(query, [encryptedRefresh, finalAccessToken, finalExpiryDate, scopes, name, targetId]);
+    await pool.query(query, [
+      encryptedRefresh, 
+      finalAccessToken, 
+      finalExpiryDate, 
+      scopes, 
+      name, 
+      external_username, 
+      external_avatar, 
+      targetId
+    ]);
   } else {
     // INSERT new
     const query = `
-      INSERT INTO integrations (user_id, service, refresh_token, access_token, expiry_date, scopes, name)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO integrations (
+        user_id, service, external_id, external_username, external_avatar, 
+        refresh_token, access_token, expiry_date, scopes, name
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     `;
-    const defaultName = name || `${service.charAt(0).toUpperCase() + service.slice(1)} Account`;
-    await pool.query(query, [finalUserId, service, encryptedRefresh, finalAccessToken, finalExpiryDate, scopes, defaultName]);
+    const defaultName = name || (external_username ? `${service.charAt(0).toUpperCase() + service.slice(1)} (${external_username})` : `${service.charAt(0).toUpperCase() + service.slice(1)} Account`);
+    await pool.query(query, [
+      finalUserId, 
+      service, 
+      external_id, 
+      external_username, 
+      external_avatar, 
+      encryptedRefresh, 
+      finalAccessToken, 
+      finalExpiryDate, 
+      scopes, 
+      defaultName
+    ]);
   }
 }
 
@@ -167,6 +198,17 @@ export async function getAllIntegrations(): Promise<GoogleIntegration[]> {
   return res.rows.map(row => ({
     ...row,
     refresh_token: decrypt(row.refresh_token)
+  }));
+}
+
+export async function getIntegrations(userId: string, service: string): Promise<GoogleIntegration[]> {
+  const res = await pool.query(
+      'SELECT * FROM integrations WHERE user_id = $1 AND service = $2 ORDER BY created_at DESC',
+      [userId, service]
+  );
+  return res.rows.map(row => ({
+      ...row,
+      refresh_token: decrypt(row.refresh_token)
   }));
 }
 
