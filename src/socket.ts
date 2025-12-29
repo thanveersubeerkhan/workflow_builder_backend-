@@ -6,11 +6,14 @@ import dotenv from 'dotenv';
 import { authRouter } from './auth.js';
 import { tokenRouter } from './tokens.js';
 import { disconnectRouter } from './disconnect.js';
-import { pool } from './db.js';
+import { pool, getIntegration } from './db.js';
 import { runAction } from './engine.js';
 import { mapUIToDefinition } from './flow-mapper.js';
 import { executeFlow } from './worker.js';
 import { performTokenRefresh } from './refresh-worker.js';
+import { getUserRepos, getRepoIssues } from './github.js';
+
+
 
 dotenv.config();
 
@@ -170,10 +173,12 @@ io.on('connection', (socket) => {
             flowId: flow.id,
             userId: flow.user_id,
             definition: flow.definition,
+            triggerData: { manual: true, source: 'UI' },
             onEvent: (event, data) => {
                 io.to(`flow:${flow.id}`).emit(event, data);
             }
         });
+
 
         if (callback) callback(runResult);
 
@@ -268,10 +273,12 @@ app.post('/api/flows/:flowId/run', async (req, res) => {
       flowId: flow.id,
       userId: flow.user_id,
       definition: flow.definition,
+      triggerData: req.body.triggerData || { manual: true, source: 'API' },
       onEvent: (event, data) => {
           io.to(`flow:${flow.id}`).emit(event, data);
       }
     });
+
 
     res.json(runResult);
   } catch (error: any) {
@@ -292,6 +299,7 @@ app.get('/api/connections/:userId', async (req, res) => {
   }
 });
 
+
 // New HTTP Relay Endpoint for Workers
 app.post('/api/worker-relay', (req, res) => {
   const { room, event, data } = req.body;
@@ -304,6 +312,56 @@ app.post('/api/worker-relay', (req, res) => {
   io.to(room).emit(event, data);
   
   res.json({ success: true });
+});
+
+app.get('/api/github/repos', async (req, res) => {
+  const userId = req.query.userId as string;
+  
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
+
+  try {
+    const integration = await getIntegration(userId, 'github');
+    
+    if (!integration || !integration.access_token) {
+      return res.status(404).json({ error: 'GitHub integration not found or missing access token' });
+    }
+    
+    const repos = await getUserRepos(integration.access_token);
+    res.json(repos);
+  } catch (error: any) {
+    console.error('Error fetching GitHub repos:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/github/issues', async (req, res) => {
+  const userId = req.query.userId as string;
+  const repository = req.query.repository as string; // Expects "owner/repo"
+  
+  if (!userId || !repository) {
+    return res.status(400).json({ error: 'userId and repository are required' });
+  }
+
+  try {
+    const integration = await getIntegration(userId, 'github');
+    
+    if (!integration || !integration.access_token) {
+      return res.status(404).json({ error: 'GitHub integration not found or missing access token' });
+    }
+    
+    const [owner, repo] = repository.split('/');
+    if (!owner || !repo) {
+       return res.status(400).json({ error: 'Repository must be in "owner/repo" format' });
+    }
+
+    const issues = await getRepoIssues(integration.access_token, owner, repo);
+    res.json(issues);
+  } catch (error: any) {
+    console.error('Error fetching GitHub issues:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.get('/health', (req, res) => res.send('OK'));

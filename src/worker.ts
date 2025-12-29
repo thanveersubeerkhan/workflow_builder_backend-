@@ -23,9 +23,10 @@ export async function executeFlow({ flowId, userId, definition, triggerData, onE
 
   // 1. Create a run record
   const runRes = await pool.query(
-    'INSERT INTO flow_runs (flow_id, status) VALUES ($1, $2) RETURNING id',
-    [flowId, 'running']
+    'INSERT INTO flow_runs (flow_id, status, trigger_data, current_context) VALUES ($1, $2, $3, $4) RETURNING id',
+    [flowId, 'running', JSON.stringify(triggerData || {}), JSON.stringify({ steps: { trigger: { data: triggerData } } })]
   );
+
   const runId = runRes.rows[0].id;
   if (onEvent) onEvent('run-created', { runId });
 
@@ -85,9 +86,10 @@ export async function executeFlow({ flowId, userId, definition, triggerData, onE
 
         // Update DB after EVERY step for real-time progress
         await pool.query(
-          'UPDATE flow_runs SET logs = $1, result = $2 WHERE id = $3',
-          [JSON.stringify(logs), JSON.stringify(context.steps), runId]
+          'UPDATE flow_runs SET logs = $1, result = $2, current_context = $3 WHERE id = $4',
+          [JSON.stringify(logs), JSON.stringify(context.steps), JSON.stringify(context), runId]
         );
+
 
         if (onEvent) {
             onEvent('step-run-finish', {
@@ -107,9 +109,10 @@ export async function executeFlow({ flowId, userId, definition, triggerData, onE
         logs.push(`[${new Date().toISOString()}] ${failureLog}`);
         
         await pool.query(
-          'UPDATE flow_runs SET status = $1, logs = $2, result = $3 WHERE id = $4',
-          ['failed', JSON.stringify(logs), JSON.stringify(context.steps), runId]
+          'UPDATE flow_runs SET status = $1, logs = $2, result = $3, current_context = $4 WHERE id = $5',
+          ['failed', JSON.stringify(logs), JSON.stringify(context.steps), JSON.stringify(context), runId]
         );
+
         
         if (onEvent) onEvent('step-failure', { stepName: step.name, error: failureLog });
         
@@ -132,9 +135,10 @@ export async function executeFlow({ flowId, userId, definition, triggerData, onE
 
     // 2. Mark as success
     await pool.query(
-      'UPDATE flow_runs SET status = $1, logs = $2, result = $3 WHERE id = $4',
-      ['success', JSON.stringify(logs), JSON.stringify(context.steps), runId]
+      'UPDATE flow_runs SET status = $1, logs = $2, result = $3, current_context = $4 WHERE id = $5',
+      ['success', JSON.stringify(logs), JSON.stringify(context.steps), JSON.stringify(context), runId]
     );
+
     
     if (onEvent) onEvent('flow-success', { flowId, runId });
     if (onEvent) onEvent('run-complete', { flowId, runId, status: 'success' });
@@ -147,9 +151,10 @@ export async function executeFlow({ flowId, userId, definition, triggerData, onE
     logs.push(`[${new Date().toISOString()}] CRITICAL ERROR: ${error.message}`);
     
     await pool.query(
-      'UPDATE flow_runs SET status = $1, logs = $2 WHERE id = $3',
-      ['failed', JSON.stringify(logs), runId]
+      'UPDATE flow_runs SET status = $1, logs = $2, current_context = $3 WHERE id = $4',
+      ['failed', JSON.stringify(logs), JSON.stringify(context), runId]
     );
+
 
     if (onEvent) onEvent('run-complete', { flowId, runId, status: 'failed', error: error.message });
 

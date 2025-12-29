@@ -1,5 +1,6 @@
 import express from 'express';
 import { createOAuthClient, SERVICE_SCOPES } from './google.js';
+import { getGitHubAuthUrl, getGitHubAccessToken } from './github.js';
 import { saveIntegration, getOrCreateUser } from './db.js';
 import { google } from 'googleapis';
 import jwt from 'jsonwebtoken';
@@ -87,7 +88,7 @@ authRouter.get('/connect/:service', (req, res) => {
   const { service } = req.params;
   const { userId, callbackUrl } = req.query;
 
-  if (!SERVICE_SCOPES[service]) {
+  if (!SERVICE_SCOPES[service] && service !== 'github') {
     return res.status(400).send('Unsupported service');
   }
 
@@ -97,12 +98,14 @@ authRouter.get('/connect/:service', (req, res) => {
 
   const client = createOAuthClient(`/auth/callback/${service}`);
   
-  const url = client.generateAuthUrl({
-    access_type: 'offline',
-    prompt: 'consent',
-    scope: SERVICE_SCOPES[service],
-    state: JSON.stringify({ userId, service, callbackUrl })
-  });
+  const url = service === 'github' 
+    ? getGitHubAuthUrl(userId as string, callbackUrl as string)
+    : client.generateAuthUrl({
+        access_type: 'offline',
+        prompt: 'consent',
+        scope: SERVICE_SCOPES[service],
+        state: JSON.stringify({ userId, service, callbackUrl })
+      });
 
   res.redirect(url);
 });
@@ -121,10 +124,25 @@ authRouter.get('/callback/:service', async (req: any, res: any) => {
       return res.status(400).send('Service mismatch');
     }
 
-    const client = createOAuthClient(`/auth/callback/${service}`);
-    const { tokens } = await client.getToken(code as string);
+    let tokens: any;
+    if (service === 'github') {
+      console.log('GitHub callback');
+      const githubData = await getGitHubAccessToken(code as string);
+      console.log('GitHub data:', githubData);
 
-    if (!tokens.refresh_token) {
+      tokens = {
+        access_token: githubData.access_token,
+        refresh_token: 'github_no_refresh_token', // GitHub does NOT use refresh tokens for standard OAuth apps
+        expiry_date: 1 * 60 * 60 * 1000,
+        scope: githubData.githubUser?.url,
+      };
+    }else {
+      const client = createOAuthClient(`/auth/callback/${service}`);
+      const { tokens: googleTokens } = await client.getToken(code as string);
+      tokens = googleTokens;
+    }
+
+    if (!tokens.refresh_token && service !== 'github') {
         // If no refresh token, prompt again or delete integration?
         // Usually happens if already connected.
     }
@@ -140,7 +158,7 @@ authRouter.get('/callback/:service', async (req: any, res: any) => {
 
     // Redirect to specified path (appended to frontend URL) or default integration page
     const finalRedirect = callbackUrl 
-      ? `${FRONTEND_URL}${callbackUrl}` 
+      ? (`${callbackUrl}`.startsWith('http') ? callbackUrl : `${FRONTEND_URL}${callbackUrl}`)
       : `${FRONTEND_URL}/integration`;
     res.redirect(finalRedirect);
   } catch (error: any) {

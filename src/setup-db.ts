@@ -1,4 +1,5 @@
 import { pool } from './db.js';
+import { SERVICES_METADATA } from './metadata.js';
 
 async function setup() {
   console.log('--- Initializing Database Schema ---');
@@ -21,7 +22,7 @@ async function setup() {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID REFERENCES users(id) ON DELETE CASCADE,
       service TEXT NOT NULL,
-      refresh_token TEXT NOT NULL,
+      refresh_token TEXT,
       access_token TEXT,
       expiry_date BIGINT,
       scopes TEXT,
@@ -30,6 +31,7 @@ async function setup() {
       UNIQUE (user_id, service)
     );
 
+    ALTER TABLE google_integrations ALTER COLUMN refresh_token DROP NOT NULL;
     ALTER TABLE google_integrations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT now();
 
     CREATE TABLE IF NOT EXISTS flows (
@@ -68,8 +70,14 @@ ALTER TABLE flows ALTER COLUMN last_trigger_data SET DEFAULT '{"time":"", "runId
       status TEXT DEFAULT 'pending',
       logs JSONB DEFAULT '[]',
       result JSONB,
-      created_at TIMESTAMP DEFAULT now()
+      created_at TIMESTAMP DEFAULT now(),
+      trigger_data JSONB DEFAULT '{}',
+      current_context JSONB DEFAULT '{"steps": {}}'
     );
+
+    ALTER TABLE flow_runs ADD COLUMN IF NOT EXISTS trigger_data JSONB DEFAULT '{}';
+    ALTER TABLE flow_runs ADD COLUMN IF NOT EXISTS current_context JSONB DEFAULT '{"steps": {}}';
+
     CREATE TABLE IF NOT EXISTS services_metadata (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -94,36 +102,7 @@ ALTER TABLE flows ALTER COLUMN last_trigger_data SET DEFAULT '{"time":"", "runId
 
 async function seedServices() {
   console.log('--- Seeding Service Metadata ---');
-  const services = [
-    {
-      id: 'gmail',
-      name: 'Gmail',
-      description: 'Send and receive emails, manage drafts and labels.',
-      icon: 'Mail',
-      color: 'text-red-500',
-    },
-    {
-      id: 'sheets',
-      name: 'Google Sheets',
-      description: 'Create, read, and edit spreadsheets dynamically.',
-      icon: 'FileSpreadsheet',
-      color: 'text-green-600',
-    },
-    {
-      id: 'docs',
-      name: 'Google Docs',
-      description: 'Create, read, and edit documents dynamically.',
-      icon: 'FileText',
-      color: 'text-purple-600',
-    },
-    {
-      id: 'drive',
-      name: 'Google Drive',
-      description: 'Upload, download, and manage files in the cloud.',
-      icon: 'HardDrive',
-      color: 'text-blue-500',
-    }
-  ];
+  const services = SERVICES_METADATA;
 
   for (const s of services) {
     await pool.query(

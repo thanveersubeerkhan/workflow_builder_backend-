@@ -110,3 +110,8 @@ npm run test:schedule   # Time-based triggers
 
 trigger local run:npx trigger.dev@latest dev 
 trigger deploy:npx trigger.dev@latest deploy 
+
+
+-`trigger dev run`: npx trigger.dev@latest dev 
+
+-`trigger deploy`: npx trigger.dev@latest deploy 
