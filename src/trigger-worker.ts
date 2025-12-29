@@ -59,7 +59,7 @@ export async function performTriggerScan(options: ScanOptions = {}) {
 
   try {
     const now = Date.now();
-    const LOOK_AHEAD_MS = 65 * 1000; // 65 seconds
+    const LOOK_AHEAD_MS = 15 * 1000; // 15 seconds (Safe overlap for 5s scanner intervals)
     const windowEnd = now + LOOK_AHEAD_MS;
     const startTime = Date.now();
     console.log(`[Scanner] ⏰ Starting Scan. Window End: ${new Date(windowEnd).toLocaleTimeString()}`);
@@ -101,12 +101,23 @@ export async function performTriggerScan(options: ScanOptions = {}) {
             const freshFlowRes = await pool.query('SELECT next_run_time, is_active, definition, last_trigger_data FROM flows WHERE id = $1', [flow.id]);
             const freshFlow = freshFlowRes.rows[0];
 
-            if (!freshFlow || !freshFlow.is_active) return false;
+            if (!freshFlow || !freshFlow.is_active) {
+                console.log(`[Scanner] ⏭️ Flow ${flow.id} is inactive or missing. Skipping.`);
+                return false;
+            }
+
+            // [SECURITY CHECK] Compare with initial memory state to detect overlap
+            const dbNextRun = Number(freshFlow.next_run_time) || now;
+            if (dbNextRun !== (Number(flow.next_run_time) || now) && !flowId) {
+                console.log(`[Scanner] 🛡️ Flow ${flow.id} was recently updated by another process. Aborting scan to prevent double-fire.`);
+                return false;
+            }
 
             // Check if it was already handled by a concurrent scanner
             const currentNextRun = Number(freshFlow.next_run_time) || now;
-            if (currentNextRun > windowEnd && !flowId) {
-              return false; // Already advanced beyond our window
+            if (dbNextRun > windowEnd) {
+              console.log(`[Scanner] ⏭️ Flow ${flow.id} already advanced (${new Date(dbNextRun).toLocaleTimeString()}) beyond window.`);
+              return false; 
             }
 
             const definition = freshFlow.definition;
@@ -128,7 +139,7 @@ export async function performTriggerScan(options: ScanOptions = {}) {
               else if (p.intervalType === 'days') nextRunMs = (p.intervalDay || 1) * 86400 * 1000;
             }
 
-            while (targetTime <= windowEnd || (flowId && fireCount === 0)) {
+            while (targetTime <= now || (fireCount === 0 && targetTime <= windowEnd)) {
               // Trigger Check
               const result = await runTrigger({
                 userId: flow.user_id,
@@ -152,6 +163,12 @@ export async function performTriggerScan(options: ScanOptions = {}) {
 
                 lastProcessedId = result.newLastId;
                 fireCount++;
+
+                // 🔥 ATOMIC UPDATE: Mark as handled in DB IMMEDIATELY before potentially looping
+                await pool.query(
+                  'UPDATE flows SET last_trigger_data = $1, next_run_time = $2 WHERE id = $3',
+                  [lastProcessedId, targetTime + nextRunMs, flow.id]
+                );
               }
 
               // Advance to next occurrence
@@ -162,11 +179,6 @@ export async function performTriggerScan(options: ScanOptions = {}) {
             }
 
             if (fireCount > 0) {
-              // Update DB: last_trigger_data and next_run_time
-              await pool.query(
-                'UPDATE flows SET last_trigger_data = $1, next_run_time = $2 WHERE id = $3',
-                [lastProcessedId, targetTime, flow.id]
-              );
               return true;
             }
           } catch (err: any) {

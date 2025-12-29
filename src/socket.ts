@@ -57,6 +57,9 @@ io.on('connection', (socket) => {
       const values = [];
       let paramIdx = 1;
 
+      const currentFlowRes = await pool.query('SELECT is_active FROM flows WHERE id = $1', [flowId]);
+      const wasActive = currentFlowRes.rows[0]?.is_active || false;
+
       if (name !== undefined) {
         updates.push(`name = $${paramIdx++}`);
         values.push(name);
@@ -70,13 +73,15 @@ io.on('connection', (socket) => {
         values.push(JSON.stringify(definition));
       }
       
+      const newlyActivated = (is_active === true || is_active === 'true') && !wasActive;
+
       if (is_active !== undefined) {
         updates.push(`is_active = $${paramIdx++}`);
         const active = is_active === true || is_active === 'true';
         values.push(active);
         
-        // If activating, set next_run_time = NOW to trigger immediate run
-        if (active) {
+        // If activating for the FIRST time, set next_run_time = NOW to trigger immediate run
+        if (newlyActivated) {
           updates.push(`next_run_time = $${paramIdx++}`);
           values.push(Date.now());
         }
@@ -104,8 +109,8 @@ io.on('connection', (socket) => {
 
       if (callback) callback({ success: true, flow: updatedFlow });
 
-      // If just activated, trigger an instant scan bypass
-      if (is_active === true || is_active === 'true') {
+      // If just transitioned to active, trigger an instant scan
+      if (newlyActivated) {
         console.log(`[Socket] ⚡ Instant scan triggered for newly activated flow: ${flowId}`);
         performTriggerScan({ flowId }).catch(err => {
           console.error(`[Socket] Error in initial scan for ${flowId}:`, err.message);
