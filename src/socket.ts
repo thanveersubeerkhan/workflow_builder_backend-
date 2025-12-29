@@ -13,6 +13,7 @@ import { executeFlow } from './worker.js';
 import { performTokenRefresh } from './refresh-worker.js';
 import { performTriggerScan, dispatchWorkflowExecution } from './trigger-worker.js';
 import { getUserRepos, getRepoIssues } from './github.js';
+import { getPiecesMetadata } from './engine.js';
 
 
 dotenv.config();
@@ -265,6 +266,15 @@ app.get('/api/services', async (req: express.Request, res: express.Response) => 
     }));
 
     res.json({ success: true, data: services });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/pieces', (req: express.Request, res: express.Response) => {
+  try {
+    const pieces = getPiecesMetadata();
+    res.json({ success: true, pieces });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

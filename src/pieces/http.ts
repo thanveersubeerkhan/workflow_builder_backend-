@@ -33,5 +33,18 @@ export const httpPiece: Piece = {
         };
       }
     }
+  },
+  metadata: {
+    actions: {
+      request: {
+        outputSchema: [
+          { name: 'status', type: 'number' },
+          { name: 'statusText', type: 'string' },
+          { name: 'headers', type: 'object' },
+          { name: 'data', type: 'object' },
+          { name: 'error', type: 'string' }
+        ]
+      }
+    }
   }
 };

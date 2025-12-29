@@ -21,6 +21,19 @@ const pieces: Record<string, Piece> = {
   http: httpPiece
 };
 
+export function getPiecesMetadata() {
+  const metadata: Record<string, any> = {};
+  for (const [key, piece] of Object.entries(pieces)) {
+    metadata[key] = {
+      name: piece.name,
+      actions: Object.keys(piece.actions),
+      triggers: Object.keys(piece.triggers || {}),
+      metadata: piece.metadata
+    };
+  }
+  return metadata;
+}
+
 interface RunActionArgs {
   userId: string;
   service: string;

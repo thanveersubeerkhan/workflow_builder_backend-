@@ -52,5 +52,14 @@ export const schedulePiece: Piece = {
 
       return null;
     }
+  },
+  metadata: {
+    triggers: {
+      schedule: {
+        outputSchema: [
+          { name: 'firedAt', type: 'string', description: 'The ISO timestamp when the schedule fired.' }
+        ]
+      }
+    }
   }
 };

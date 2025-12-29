@@ -186,7 +186,8 @@ app.post('/api/flows/:flowId/run', async (req, res) => {
     const runResult = await executeFlow({
       flowId: flow.id,
       userId: flow.user_id,
-      definition: flow.definition
+      definition: flow.definition,
+      triggerData: { manual: true, source: 'Dashboard' }
     });
 
     res.json(runResult);

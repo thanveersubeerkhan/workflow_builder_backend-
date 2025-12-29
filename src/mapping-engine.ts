@@ -16,9 +16,12 @@ export function resolveVariables(input: any, context: any): any {
     return input;
   }
 
-  return input.replace(/\{\{(.+?)\}\}/g, (match, path) => {
-    return getObjectPath(context, path.trim()) ?? match;
+  const result = input.replace(/\{\{(.+?)\}\}/g, (match, path) => {
+    const val = getObjectPath(context, path.trim());
+    console.log(`[Mapping] Resolving "{{${path.trim()}}}" -> ${val === undefined ? 'UNDEFINED' : JSON.stringify(val)}`);
+    return val ?? match;
   });
+  return result;
 }
 
 export function evaluateCondition(expression: string, context: any): boolean {
@@ -29,10 +32,15 @@ export function evaluateCondition(expression: string, context: any): boolean {
 }
 
 function getObjectPath(obj: any, path: string): any {
-  if (!path) return undefined;
+  if (!path || !obj) return undefined;
   // Convert [index] to .index for easier splitting
   const normalizedPath = path.replace(/\[(\d+)\]/g, '.$1');
-  return normalizedPath.split('.').reduce((prev, curr) => {
-    return (prev && prev !== null) ? prev[curr] : undefined;
-  }, obj);
+  const parts = normalizedPath.split('.');
+  
+  let current = obj;
+  for (const part of parts) {
+    if (current === null || current === undefined) return undefined;
+    current = current[part];
+  }
+  return current;
 }

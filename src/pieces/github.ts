@@ -251,5 +251,33 @@ export const githubPiece: Piece = {
       return res.data;
     }
   },
-  triggers: {}
+  triggers: {},
+  metadata: {
+    actions: {
+      listRepos: {
+        outputSchema: [
+          { name: 'id', type: 'number', description: 'The ID of the repository.' },
+          { name: 'name', type: 'string', description: 'The name of the repository.' },
+          { name: 'full_name', type: 'string', description: 'The full name of the repository (owner/repo).' },
+          { name: 'html_url', type: 'string', description: 'The URL to view the repository on GitHub.' }
+        ]
+      },
+      createIssue: {
+        outputSchema: [
+          { name: 'id', type: 'number', description: 'The ID of the created issue.' },
+          { name: 'number', type: 'number', description: 'The issue number.' },
+          { name: 'title', type: 'string', description: 'The title of the issue.' },
+          { name: 'html_url', type: 'string', description: 'The URL to view the issue on GitHub.' }
+        ]
+      },
+      getUser: {
+        outputSchema: [
+          { name: 'login', type: 'string', description: 'The user\'s login handle.' },
+          { name: 'id', type: 'number', description: 'The user\'s unique ID.' },
+          { name: 'name', type: 'string', description: 'The user\'s full name.' },
+          { name: 'email', type: 'string', description: 'The user\'s email address.' }
+        ]
+      }
+    }
+  }
 };

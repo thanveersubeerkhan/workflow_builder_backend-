@@ -23,5 +23,25 @@ export const drivePiece: Piece = {
       });
       return res.data;
     }
+  },
+  metadata: {
+    actions: {
+      listFiles: {
+        outputSchema: [
+          { name: 'files', type: 'array', items: { name: 'file', type: 'object', properties: [
+            { name: 'id', type: 'string' },
+            { name: 'name', type: 'string' },
+            { name: 'mimeType', type: 'string' }
+          ]}}
+        ]
+      },
+      createFolder: {
+        outputSchema: [
+          { name: 'id', type: 'string' },
+          { name: 'name', type: 'string' },
+          { name: 'mimeType', type: 'string' }
+        ]
+      }
+    }
   }
 };

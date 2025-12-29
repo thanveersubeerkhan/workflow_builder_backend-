@@ -8,7 +8,7 @@ interface ExecuteFlowArgs {
   flowId: string;
   userId: string;
   definition: FlowDefinition;
-  triggerData?: any;
+  triggerData?: Record<string, any>; // Changed type to explicitly be an object
   onEvent?: (event: string, data: any) => void;
 }
 
@@ -19,7 +19,13 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
   if (triggerData) console.log(`[Executor] 📦 Trigger Data:`, JSON.stringify(triggerData, null, 2));
   
   let runId = initialRunId;
-  let context: any = { steps: { trigger: { data: triggerData } }, waited_steps: {}, completed_steps: {} };
+  let context: any = { steps: { trigger: { data: triggerData || {} } }, waited_steps: {}, completed_steps: {} };
+  
+  // Add trigger output under its nodeId if available for consistent addressing
+  if (definition.trigger?.nodeId) {
+    context.steps[definition.trigger.nodeId] = { data: triggerData };
+  }
+
   let lastStepIndex = -1;
   let logs: string[] = [];
 
@@ -35,7 +41,12 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
         if (typeof context === 'string') try { context = JSON.parse(context); } catch(e) {}
         if (!context.waited_steps) context.waited_steps = {};
         if (!context.completed_steps) context.completed_steps = {};
-        if (!context.steps) context.steps = { trigger: { data: existingRun.trigger_data } };
+        if (!context.steps) context.steps = { trigger: { data: existingRun.trigger_data || {} } };
+        
+        // Ensure nodeId mapping is restored on resume
+        if (definition.trigger?.nodeId && !context.steps[definition.trigger.nodeId]) {
+          context.steps[definition.trigger.nodeId] = { data: existingRun.trigger_data };
+        }
         
         lastStepIndex = existingRun.last_step_index ?? -1;
         
@@ -160,6 +171,7 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
       
       try {
         if (!step.type || step.type === 'action') {
+            console.log(`[Executor] Resolving variables for action "${step.name}". Context keys: ${Object.keys(context.steps || {}).join(', ')}`);
             const resolvedParams = resolveVariables(step.params, context);
             const result = await runAction({
               userId,

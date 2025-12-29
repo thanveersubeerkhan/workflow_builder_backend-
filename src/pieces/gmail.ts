@@ -1,6 +1,45 @@
 import { google } from 'googleapis';
 import { Piece } from '../types.js';
 
+function decodeBase64(data: string) {
+  try {
+    return Buffer.from(data.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString();
+  } catch (err) {
+    console.error(`[Gmail] Base64 Decode Error:`, err);
+    return '';
+  }
+}
+
+function extractBody(payload: any): string {
+  if (payload.body?.data) {
+    return decodeBase64(payload.body.data);
+  }
+  if (payload.parts) {
+    // 1. Try to find text/plain
+    const textPart = payload.parts.find((p: any) => p.mimeType === 'text/plain');
+    if (textPart) {
+      const res = extractBody(textPart);
+      if (res) return res;
+    }
+
+    // 2. Try to find text/html
+    const htmlPart = payload.parts.find((p: any) => p.mimeType === 'text/html');
+    if (htmlPart) {
+      const res = extractBody(htmlPart);
+      if (res) return res;
+    }
+
+    // 3. Recurse into all parts (e.g. multipart/alternative, multipart/related)
+    for (const part of payload.parts) {
+      if (part.mimeType?.startsWith('multipart/')) {
+        const res = extractBody(part);
+        if (res) return res;
+      }
+    }
+  }
+  return '';
+}
+
 export const gmailPiece: Piece = {
   name: 'gmail',
   actions: {
@@ -43,6 +82,31 @@ export const gmailPiece: Piece = {
         q: params.q || '',
       });
       return res.data;
+    },
+
+    getMessage: async ({ auth, params }) => {
+      const gmail = google.gmail({ version: 'v1', auth });
+      const res = await gmail.users.messages.get({
+        userId: 'me',
+        id: params.id,
+      });
+
+      const message = res.data;
+      const headers = message.payload?.headers || [];
+      const subject = headers.find(h => h.name?.toLowerCase() === 'subject')?.value || '';
+      const from = headers.find(h => h.name?.toLowerCase() === 'from')?.value || '';
+      const body = extractBody(message.payload) || message.snippet || '';
+
+      console.log(`[Gmail] Action getMessage result: subject="${subject}", bodyLength=${body.length}`);
+
+      return {
+        id: message.id,
+        threadId: message.threadId,
+        subject,
+        from,
+        body,
+        ...message
+      };
     }
   },
 
@@ -94,10 +158,68 @@ export const gmailPiece: Piece = {
         id: targetMessage.id!
       });
 
+      const message = details.data;
+      const headers = message.payload?.headers || [];
+      const subject = headers.find(h => h.name?.toLowerCase() === 'subject')?.value || '';
+      const from = headers.find(h => h.name?.toLowerCase() === 'from')?.value || '';
+      const body = extractBody(message.payload) || message.snippet || '';
+
+      console.log(`[Gmail] Trigger newEmail result: subject="${subject}", bodyLength=${body.length}`);
+
       return {
         newLastId: { lastMessageId: targetMessage.id },
-        data: details.data
+        data: {
+          id: message.id,
+          threadId: message.threadId,
+          subject,
+          from,
+          body,
+          ...message
+        }
       };
+    }
+  },
+  metadata: {
+    actions: {
+      sendEmail: {
+        outputSchema: [
+          { name: 'id', type: 'string', description: 'The ID of the sent message.' },
+          { name: 'threadId', type: 'string', description: 'The thread ID of the sent message.' }
+        ]
+      },
+      listMessages: {
+        outputSchema: [
+          { name: 'messages', type: 'array', description: 'List of message summaries.' },
+          { name: 'resultSizeEstimate', type: 'number', description: 'Estimated total number of results.' }
+        ]
+      },
+      getMessage: {
+        label: 'Get Message',
+        description: 'Get a specific message by its ID.',
+        parameters: [
+          { name: 'id', label: 'Message ID', type: 'string', required: true, description: 'The ID of the message to retrieve.' }
+        ],
+        outputSchema: [
+          { name: 'id', type: 'string', description: 'The unique ID of the message.' },
+          { name: 'threadId', type: 'string', description: 'The ID of the thread which contains this message.' },
+          { name: 'snippet', type: 'string', description: 'A short part of the message text.' },
+          { name: 'subject', type: 'string', description: 'The message subject.' },
+          { name: 'from', type: 'string', description: 'The sender email address.' },
+          { name: 'body', type: 'string', description: 'The full message body.' }
+        ]
+      }
+    },
+    triggers: {
+      newEmail: {
+        outputSchema: [
+          { name: 'id', type: 'string', description: 'The unique ID of the message.' },
+          { name: 'threadId', type: 'string', description: 'The ID of the thread which contains this message.' },
+          { name: 'snippet', type: 'string', description: 'A short part of the message text.' },
+          { name: 'subject', type: 'string', description: 'The message subject.' },
+          { name: 'from', type: 'string', description: 'The sender email address.' },
+          { name: 'body', type: 'string', description: 'The full message body.' }
+        ]
+      }
     }
   }
 };

@@ -97,5 +97,47 @@ export const sheetsPiece: Piece = {
       });
       return res.data;
     }
+  },
+  metadata: {
+    actions: {
+      appendRow: {
+        outputSchema: [
+          { name: 'spreadsheetId', type: 'string' },
+          { name: 'tableRange', type: 'string' },
+          { name: 'updates', type: 'object', properties: [
+            { name: 'updatedRange', type: 'string' },
+            { name: 'updatedRows', type: 'number' },
+            { name: 'updatedColumns', type: 'number' },
+            { name: 'updatedCells', type: 'number' }
+          ]}
+        ]
+      },
+      appendRowSmart: {
+        outputSchema: [
+          { name: 'spreadsheetId', type: 'string' },
+          { name: 'tableRange', type: 'string' },
+          { name: 'updates', type: 'object', properties: [
+            { name: 'updatedRange', type: 'string' },
+            { name: 'updatedRows', type: 'number' },
+            { name: 'updatedColumns', type: 'number' },
+            { name: 'updatedCells', type: 'number' }
+          ]}
+        ]
+      },
+      getValues: {
+        outputSchema: [
+          { name: 'values', type: 'array', items: { name: 'row', type: 'array', items: { name: 'cell', type: 'string' } } }
+        ]
+      },
+      createSpreadsheet: {
+        outputSchema: [
+          { name: 'spreadsheetId', type: 'string' },
+          { name: 'spreadsheetUrl', type: 'string' },
+          { name: 'properties', type: 'object', properties: [
+            { name: 'title', type: 'string' }
+          ]}
+        ]
+      }
+    }
   }
 };

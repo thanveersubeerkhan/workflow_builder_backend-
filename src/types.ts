@@ -16,10 +16,40 @@ export interface GoogleIntegration {
   scopes?: string;
 }
 
+export interface PropertyMetadata {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'object' | 'array';
+  description?: string;
+  properties?: PropertyMetadata[]; // For objects
+  items?: PropertyMetadata; // For arrays
+}
+
+export interface ActionParameterMetadata {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'array' | 'connection' | 'select' | 'json';
+  label: string;
+  description?: string;
+  required?: boolean;
+}
+
 export interface Piece {
   name: string;
   actions: Record<string, ActionFunction>;
   triggers?: Record<string, TriggerFunction>;
+  metadata?: {
+    actions?: Record<string, { 
+      label?: string;
+      description?: string;
+      parameters?: ActionParameterMetadata[];
+      outputSchema?: PropertyMetadata[] 
+    }>;
+    triggers?: Record<string, { 
+      label?: string;
+      description?: string;
+      parameters?: ActionParameterMetadata[];
+      outputSchema?: PropertyMetadata[] 
+    }>;
+  };
 }
 
 export type ActionFunction = (args: { auth: any; params: any }) => Promise<any>;

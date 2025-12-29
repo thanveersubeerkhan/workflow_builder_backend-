@@ -8,5 +8,16 @@ export const loggerPiece: Piece = {
       return { success: true, message: params.message, time: new Date().toISOString() };
     }
   },
-  triggers: {}
+  triggers: {},
+  metadata: {
+    actions: {
+      log: {
+        outputSchema: [
+          { name: 'success', type: 'boolean' },
+          { name: 'message', type: 'string' },
+          { name: 'time', type: 'string' }
+        ]
+      }
+    }
+  }
 };

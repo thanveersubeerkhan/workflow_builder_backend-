@@ -34,5 +34,22 @@ export const docsPiece: Piece = {
 
       return res.data;
     }
+  },
+  metadata: {
+    actions: {
+      createDocument: {
+        outputSchema: [
+          { name: 'documentId', type: 'string' },
+          { name: 'title', type: 'string' },
+          { name: 'revisionId', type: 'string' }
+        ]
+      },
+      appendText: {
+        outputSchema: [
+          { name: 'documentId', type: 'string' },
+          { name: 'replies', type: 'array', items: { name: 'reply', type: 'object' } }
+        ]
+      }
+    }
   }
 };
