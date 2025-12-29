@@ -8,7 +8,7 @@ async function check() {
   console.log('--- GitHub Refresh Verification ---');
   try {
       // Find a user with github integration
-      const res = await pool.query("SELECT user_id, access_token, refresh_token, expiry_date FROM google_integrations WHERE service = 'github' LIMIT 1");
+      const res = await pool.query("SELECT user_id, access_token, refresh_token, expiry_date FROM integrations WHERE service = 'github' LIMIT 1");
       
       if (res.rowCount === 0) {
           console.log('No GitHub integrations found in DB.');

@@ -10,7 +10,7 @@ async function check() {
     console.log('User IDs found:', res.rows);
     
     for (const row of res.rows) {
-        const intRes = await pool.query('SELECT service, created_at FROM google_integrations WHERE user_id = $1', [row.user_id]);
+        const intRes = await pool.query('SELECT service, created_at FROM integrations WHERE user_id = $1', [row.user_id]);
         console.log(`Integrations for ${row.user_id}:`, intRes.rows);
     }
 

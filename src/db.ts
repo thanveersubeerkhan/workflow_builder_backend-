@@ -81,7 +81,7 @@ export async function saveIntegration(data: GoogleIntegration): Promise<void> {
   const encryptedRefresh = finalRefreshToken ? encrypt(finalRefreshToken) : null;
 
   const query = `
-    INSERT INTO google_integrations (user_id, service, refresh_token, access_token, expiry_date, scopes)
+    INSERT INTO integrations (user_id, service, refresh_token, access_token, expiry_date, scopes)
     VALUES ($1, $2, $3, $4, $5, $6)
     ON CONFLICT (user_id, service) 
     DO UPDATE SET 
@@ -97,7 +97,7 @@ export async function saveIntegration(data: GoogleIntegration): Promise<void> {
 
 export async function getIntegration(userId: string, service: string): Promise<GoogleIntegration | null> {
   const res = await pool.query(
-    'SELECT * FROM google_integrations WHERE user_id = $1 AND service = $2',
+    'SELECT * FROM integrations WHERE user_id = $1 AND service = $2',
     [userId, service]
   );
   
@@ -112,13 +112,13 @@ export async function getIntegration(userId: string, service: string): Promise<G
 
 export async function deleteIntegration(userId: string, service: string): Promise<void> {
   await pool.query(
-    'DELETE FROM google_integrations WHERE user_id = $1 AND service = $2',
+    'DELETE FROM integrations WHERE user_id = $1 AND service = $2',
     [userId, service]
   );
 }
 
 export async function getAllIntegrations(): Promise<GoogleIntegration[]> {
-  const res = await pool.query('SELECT * FROM google_integrations');
+  const res = await pool.query('SELECT * FROM integrations');
   return res.rows.map(row => ({
     ...row,
     refresh_token: decrypt(row.refresh_token)

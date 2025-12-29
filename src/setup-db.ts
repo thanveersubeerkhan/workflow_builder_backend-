@@ -18,7 +18,7 @@ async function setup() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS picture_url TEXT;
 
-    CREATE TABLE IF NOT EXISTS google_integrations (
+    CREATE TABLE IF NOT EXISTS integrations (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID REFERENCES users(id) ON DELETE CASCADE,
       service TEXT NOT NULL,
@@ -31,8 +31,8 @@ async function setup() {
       UNIQUE (user_id, service)
     );
 
-    ALTER TABLE google_integrations ALTER COLUMN refresh_token DROP NOT NULL;
-    ALTER TABLE google_integrations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT now();
+    ALTER TABLE integrations ALTER COLUMN refresh_token DROP NOT NULL;
+    ALTER TABLE integrations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT now();
 
     CREATE TABLE IF NOT EXISTS flows (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -78,7 +78,7 @@ ALTER TABLE flows ALTER COLUMN last_trigger_data SET DEFAULT '{"time":"", "runId
     ALTER TABLE flow_runs ADD COLUMN IF NOT EXISTS trigger_data JSONB DEFAULT '{}';
     ALTER TABLE flow_runs ADD COLUMN IF NOT EXISTS current_context JSONB DEFAULT '{"steps": {}}';
 
-    CREATE TABLE IF NOT EXISTS services_metadata (
+    CREATE TABLE IF NOT EXISTS connectors_metadata (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       description TEXT,
@@ -106,7 +106,7 @@ async function seedServices() {
 
   for (const s of services) {
     await pool.query(
-      `INSERT INTO services_metadata (id, name, description, icon, color)
+      `INSERT INTO connectors_metadata (id, name, description, icon, color)
        VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name,

@@ -33,7 +33,7 @@ app.get('/api/services', async (req: express.Request, res: express.Response) => 
   if (!userId) return res.status(400).json({ success: false, error: 'userId is required' });
 
   try {
-    const metadataRes = await pool.query('SELECT * FROM services_metadata');
+    const metadataRes = await pool.query('SELECT * FROM connectors_metadata');
     const servicesMetadata = metadataRes.rows;
 
     const dbRes = await pool.query(
@@ -225,7 +225,7 @@ app.get('/api/connections/:userId', async (req, res) => {
   const { userId } = req.params;
   try {
     const result = await pool.query(
-      'SELECT service, created_at FROM google_integrations WHERE user_id = $1',
+      'SELECT service, created_at FROM integrations WHERE user_id = $1',
       [userId]
     );
     res.json(result.rows);
