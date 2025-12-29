@@ -365,6 +365,7 @@ app.get('/api/github/issues', async (req, res) => {
 });
 
 app.get('/health', (req, res) => res.send('OK'));
+app.get('/health', (req, res) => res.send('OK'));  
 
 httpServer.listen(PORT, () => {
   console.log(`🚀 API Server running on port ${PORT}`);
