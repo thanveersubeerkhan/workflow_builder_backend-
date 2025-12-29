@@ -11,7 +11,7 @@ import { runAction } from './engine.js';
 import { mapUIToDefinition } from './flow-mapper.js';
 import { executeFlow } from './worker.js';
 import { performTokenRefresh } from './refresh-worker.js';
-import { performTriggerScan, dispatchWorkflowExecution } from './trigger-worker.js';
+import { performTriggerScan, dispatchWorkflowExecution, executeOrDispatch } from './trigger-worker.js';
 import { getUserRepos, getRepoIssues } from './github.js';
 import { getPiecesMetadata } from './engine.js';
 
@@ -34,7 +34,8 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Routes
 app.use('/auth', authRouter);
@@ -190,12 +191,14 @@ io.on('connection', (socket) => {
         }
         const flow = result.rows[0];
 
-        const runResult = await dispatchWorkflowExecution({
+        const runResult = await executeOrDispatch({
             flowId: flow.id,
             userId: flow.user_id,
             definition: flow.definition,
-            triggerData: { manual: true, source: 'UI' }
-
+            triggerData: { manual: true, source: 'UI' },
+            onEvent: (event, data) => {
+                io.to(`flow:${flow.id}`).emit(event, data);
+            }
         });
 
 
@@ -216,11 +219,14 @@ io.on('connection', (socket) => {
 
         const flow = flowRes.rows[0];
 
-        await dispatchWorkflowExecution({
+        await executeOrDispatch({
             runId,
             flowId: flow.id,
             userId: flow.user_id,
-            definition: flow.definition
+            definition: flow.definition,
+            onEvent: (event, data) => {
+                io.to(`flow:${flow.id}`).emit(event, data);
+            }
         });
 
         if (callback) callback({ success: true, message: 'Resume started' });
@@ -364,11 +370,14 @@ app.post('/api/flows/:flowId/run', async (req, res) => {
 
     const flow = result.rows[0];
     
-    const runResult = await dispatchWorkflowExecution({
+    const runResult = await executeOrDispatch({
       flowId: flow.id,
       userId: flow.user_id,
       definition: flow.definition,
-      triggerData: req.body.triggerData || { manual: true, source: 'API' }
+      triggerData: req.body.triggerData || { manual: true, source: 'API' },
+      onEvent: (event, data) => {
+        io.to(`flow:${flow.id}`).emit(event, data);
+      }
     });
 
 
@@ -388,11 +397,14 @@ app.post('/api/flows/:flowId/runs/:runId/resume', async (req, res) => {
 
     const flow = flowRes.rows[0];
 
-    await dispatchWorkflowExecution({
+    await executeOrDispatch({
         runId,
         flowId: flow.id,
         userId: flow.user_id,
-        definition: flow.definition
+        definition: flow.definition,
+        onEvent: (event, data) => {
+            io.to(`flow:${flow.id}`).emit(event, data);
+        }
     });
 
     res.json({ success: true, message: 'Resume started' });
@@ -426,11 +438,14 @@ app.post('/api/flows/:flowId/runs/:runId/reject', async (req, res) => {
             const flow = flowRes.rows[0];
 
             // Dispatch to queue so the engine processes the rejection and stops
-            await dispatchWorkflowExecution({
+            await executeOrDispatch({
                 runId,
                 flowId: flow.id,
                 userId: flow.user_id,
-                definition: flow.definition
+                definition: flow.definition,
+                onEvent: (event, data) => {
+                    io.to(`flow:${flow.id}`).emit(event, data);
+                }
             });
 
             res.json({ success: true, message: 'Flow rejected and terminated' });
@@ -684,12 +699,12 @@ app.get('/health', (req, res) => res.send('OK'));
 // Ensure triggers are scanned even if external scheduler isn't configured
 setInterval(() => {
   performTriggerScan().catch(err => console.error('[Internal Poller] Scan failed:', err.message));
-}, 10000); // Check every 10 seconds
+}, 30000); // Check every 30 seconds
 
 httpServer.listen(PORT, () => {
   console.log(`🚀 API Server running on port ${PORT}`);
   console.log(`🔌 Socket.IO enabled`);
-  console.log(`⏰ Internal Trigger Poller started (10s interval)`);
+  console.log(`⏰ Internal Trigger Poller started (30s interval)`);
 });
 
 const shutdown = async (signal: string) => {

@@ -135,6 +135,7 @@ interface RunTriggerArgs {
 }
 
 export async function runTrigger({ userId, service, triggerName, lastProcessedId, params = {}, epoch }: RunTriggerArgs) {
+  console.log(`[Engine] runTrigger called. Service: ${service}, Trigger: ${triggerName}, Params: ${JSON.stringify(params)}`);
   const piece = pieces[service];
   if (!piece) throw new Error(`Service ${service} not found`);
 

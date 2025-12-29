@@ -50,6 +50,44 @@ export async function dispatchWorkflowExecution({ flowId, userId, definition, tr
     }
 }
 
+interface ExecuteOrDispatchOptions extends DispatchOptions {
+    onEvent?: (event: string, data: any) => void;
+}
+
+/**
+ * Smart execution router: Chooses between direct execution or queue-based execution
+ * based on the USE_DIRECT_EXECUTION environment variable.
+ */
+export async function executeOrDispatch(options: ExecuteOrDispatchOptions) {
+    const useDirectExecution = process.env.USE_DIRECT_EXECUTION === 'true';
+    
+    if (useDirectExecution) {
+        console.log(`[ExecuteOrDispatch] 🏃 Direct execution mode enabled`);
+        // Import executeFlow dynamically to avoid circular dependencies
+        const { executeFlow } = await import('./worker.js');
+        
+        return await executeFlow({
+            runId: options.runId,
+            flowId: options.flowId,
+            userId: options.userId,
+            definition: options.definition,
+            triggerData: options.triggerData,
+            onEvent: options.onEvent
+        });
+    } else {
+        console.log(`[ExecuteOrDispatch] 📬 Queue mode enabled - dispatching to Trigger.dev`);
+        return await dispatchWorkflowExecution({
+            flowId: options.flowId,
+            userId: options.userId,
+            definition: options.definition,
+            triggerData: options.triggerData,
+            runId: options.runId,
+            delaySeconds: options.delaySeconds
+        });
+    }
+}
+
+
 /**
  * Performs a high-scale parallel scan for active triggers.
  * Refactored for "Double-Loopback" architecture.
@@ -95,97 +133,147 @@ export async function performTriggerScan(options: ScanOptions = {}) {
       console.log(`[Scanner] 📦 Processing Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(flows.length / BATCH_SIZE)} (${batch.length} flows)`);
       
       const results = await Promise.all(batch.map(async (flow) => {
-        return await withAdvisoryLock(`scan:flow:${flow.id}`, async () => {
-          try {
-            // 3. Re-fetch flow state INSIDE the lock to prevent race conditions
-            const freshFlowRes = await pool.query('SELECT next_run_time, is_active, definition, last_trigger_data FROM flows WHERE id = $1', [flow.id]);
-            const freshFlow = freshFlowRes.rows[0];
+        const workerId = `worker-${process.pid}-${crypto.randomUUID()}`;
+        const lockDuration = 60 * 1000; // 1 minute lease
+        const lockExpiry = Date.now() + lockDuration;
 
-            if (!freshFlow || !freshFlow.is_active) {
-                console.log(`[Scanner] ⏭️ Flow ${flow.id} is inactive or missing. Skipping.`);
+        // 1. Try to Acquire Lease
+        // Only verify if locked_until is NULL (free) OR in the past (expired/zombie)
+        try {
+            const lockRes = await pool.query(
+                `UPDATE flows 
+                 SET locked_until = $1, locked_by = $2 
+                 WHERE id = $3 
+                 AND (locked_until IS NULL OR locked_until < $4)
+                 RETURNING id`,
+                [lockExpiry, workerId, flow.id, Date.now()]
+            );
+
+            if (lockRes.rowCount === 0) {
+                // console.log(`[Scanner] 🔒 Busy: Flow ${flow.id} is locked by another worker.`);
                 return false;
             }
 
-            // [SECURITY CHECK] Compare with initial memory state to detect overlap
-            const dbNextRun = Number(freshFlow.next_run_time) || now;
-            if (dbNextRun !== (Number(flow.next_run_time) || now) && !flowId) {
-                console.log(`[Scanner] 🛡️ Flow ${flow.id} was recently updated by another process. Aborting scan to prevent double-fire.`);
-                return false;
-            }
+            console.log(`[Scanner] 🔒 Acquired Lease for flow ${flow.id} until ${new Date(lockExpiry).toLocaleTimeString()}`);
 
-            // Check if it was already handled by a concurrent scanner
-            const currentNextRun = Number(freshFlow.next_run_time) || now;
-            if (dbNextRun > windowEnd) {
-              console.log(`[Scanner] ⏭️ Flow ${flow.id} already advanced (${new Date(dbNextRun).toLocaleTimeString()}) beyond window.`);
-              return false; 
-            }
+            try {
+                // 3. Re-fetch flow state (Standard logic)
+                const freshFlowRes = await pool.query('SELECT next_run_time, is_active, definition, last_trigger_data FROM flows WHERE id = $1', [flow.id]);
+                const freshFlow = freshFlowRes.rows[0];
 
-            const definition = freshFlow.definition;
-            const trigger = definition.trigger;
-            if (!trigger) return false;
+                if (!freshFlow || !freshFlow.is_active) {
+                    console.log(`[Scanner] ⏭️ Flow ${flow.id} is inactive or missing. Skipping.`);
+                    return false;
+                }
 
-            // TRACK MULTIPLE OCCURRENCES
-            let targetTime = currentNextRun;
-            let fireCount = 0;
-            let lastProcessedId = freshFlow.last_trigger_data;
+                // [SECURITY CHECK] Compare with initial memory state to detect overlap
+                const dbNextRun = Number(freshFlow.next_run_time) || now;
+                if (dbNextRun !== (Number(flow.next_run_time) || now) && !flowId) {
+                    console.log(`[Scanner] 🛡️ Flow ${flow.id} was recently updated by another process. Aborting scan to prevent double-fire.`);
+                    return false;
+                }
 
-            // Calculate Interval
-            let nextRunMs = 60 * 1000;
-            if (trigger.piece === 'schedule') {
-              const p = trigger.params || {};
-              if (p.intervalType === 'seconds') nextRunMs = (p.intervalSeconds || 60) * 1000;
-              else if (p.intervalType === 'minutes') nextRunMs = (p.intervalMinutes || 1) * 60 * 1000;
-              else if (p.intervalType === 'hours') nextRunMs = (p.intervalHours || 1) * 3600 * 1000;
-              else if (p.intervalType === 'days') nextRunMs = (p.intervalDay || 1) * 86400 * 1000;
-            }
+                // Check if it was already handled by a concurrent scanner
+                const currentNextRun = Number(freshFlow.next_run_time) || now;
+                if (dbNextRun > windowEnd) {
+                console.log(`[Scanner] ⏭️ Flow ${flow.id} already advanced (${new Date(dbNextRun).toLocaleTimeString()}) beyond window.`);
+                return false; 
+                }
 
-            while (targetTime <= now || (fireCount === 0 && targetTime <= windowEnd)) {
-              // Trigger Check
-              const result = await runTrigger({
-                userId: flow.user_id,
-                service: trigger.piece,
-                triggerName: trigger.name,
-                lastProcessedId: lastProcessedId,
-                params: trigger.params,
-                epoch: targetTime
-              });
+                const definition = freshFlow.definition;
+                const trigger = definition.trigger;
+                if (!trigger) {
+                    console.log(`[Scanner] ⚠️ Flow ${flow.id} has no trigger definition.`);
+                    return false;
+                }
 
-              if (result && result.newLastId) {
-                const delaySeconds = Math.max(0, Math.floor((targetTime - Date.now()) / 1000));
-                
-                await dispatchWorkflowExecution({
-                  flowId: flow.id,
-                  userId: flow.user_id,
-                  definition: definition,
-                  triggerData: result.data,
-                  delaySeconds: delaySeconds
+                console.log(`[Scanner] Flow ${flow.id} trigger: ${trigger.piece}.${trigger.name}`);
+
+                // TRACK MULTIPLE OCCURRENCES
+                let targetTime = currentNextRun;
+                let fireCount = 0;
+                let lastProcessedId = freshFlow.last_trigger_data;
+
+                // Calculate Interval
+                let nextRunMs = 60 * 1000;
+                if (trigger.piece === 'schedule') {
+                const p = trigger.params || {};
+                if (p.intervalType === 'seconds') nextRunMs = (p.intervalSeconds || 60) * 1000;
+                else if (p.intervalType === 'minutes') nextRunMs = (p.intervalMinutes || 1) * 60 * 1000;
+                else if (p.intervalType === 'hours') nextRunMs = (p.intervalHours || 1) * 3600 * 1000;
+                else if (p.intervalType === 'days') nextRunMs = (p.intervalDay || 1) * 86400 * 1000;
+                } else {
+                    // For non-schedule triggers (polling), don't catch up on missed windows.
+                    // Just run once now.
+                    if (targetTime < now) {
+                        console.log(`[Scanner] ⏭️ Polling trigger lagging. Fast-forwarding from ${new Date(targetTime).toLocaleTimeString()} to now.`);
+                        targetTime = now;
+                    }
+                }
+
+                console.log(`[Scanner] Entering loop for ${flow.id}. targetTime: ${targetTime}, now: ${now}, windowEnd: ${windowEnd}`);
+
+                while (targetTime <= now || (fireCount === 0 && targetTime <= windowEnd)) {
+                // Trigger Check
+                console.log(`[Scanner] calling runTrigger for ${flow.id}`);
+                const result = await runTrigger({
+                    userId: flow.user_id,
+                    service: trigger.piece,
+                    triggerName: trigger.name,
+                    lastProcessedId: lastProcessedId,
+                    params: trigger.params,
+                    epoch: targetTime
                 });
 
-                lastProcessedId = result.newLastId;
-                fireCount++;
+                if (result && result.newLastId) {
+                    const delaySeconds = Math.max(0, Math.floor((targetTime - Date.now()) / 1000));
+                    
+                    await executeOrDispatch({
+                    flowId: flow.id,
+                    userId: flow.user_id,
+                    definition: definition,
+                    triggerData: result.data,
+                    delaySeconds: delaySeconds
+                    });
 
-                // 🔥 ATOMIC UPDATE: Mark as handled in DB IMMEDIATELY before potentially looping
+                    lastProcessedId = result.newLastId;
+                    fireCount++;
+
+                    // 🔥 ATOMIC UPDATE: Mark as handled in DB IMMEDIATELY before potentially looping
+                    // Also renew lease to prevent expiry during long processing
+                    const newExpiry = Date.now() + lockDuration; 
+                    await pool.query(
+                    'UPDATE flows SET last_trigger_data = $1, next_run_time = $2, locked_until = $3 WHERE id = $4',
+                    [lastProcessedId, targetTime + nextRunMs, newExpiry, flow.id]
+                    );
+                }
+
+                // Advance to next occurrence
+                targetTime += nextRunMs;
+                
+                // Prevent infinite loops for 0 interval
+                if (nextRunMs <= 0) break;
+                }
+
+                if (fireCount > 0) {
+                return true;
+                }
+
+                return false;
+            } finally {
+                // RELEASE LEASE independently of success/fail
+                // Only release if WE still own it (safe check)
                 await pool.query(
-                  'UPDATE flows SET last_trigger_data = $1, next_run_time = $2 WHERE id = $3',
-                  [lastProcessedId, targetTime + nextRunMs, flow.id]
+                    'UPDATE flows SET locked_until = NULL, locked_by = NULL WHERE id = $1 AND locked_by = $2',
+                    [flow.id, workerId]
                 );
-              }
-
-              // Advance to next occurrence
-              targetTime += nextRunMs;
-              
-              // Prevent infinite loops for 0 interval
-              if (nextRunMs <= 0) break;
+                // console.log(`[Scanner] 🔓 Released Lease for flow ${flow.id}`);
             }
 
-            if (fireCount > 0) {
-              return true;
-            }
-          } catch (err: any) {
+        } catch (err: any) {
             console.error(`[Scanner] ❌ Error in flow ${flow.id}:`, err.message);
-          }
-          return false;
-        });
+            return false;
+        }
       }));
       totalFired += results.filter(Boolean).length;
     }

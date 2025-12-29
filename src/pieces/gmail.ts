@@ -118,6 +118,8 @@ export const gmailPiece: Piece = {
       const userQuery = params?.q || '';
       const query = `label:${folder} ${userQuery}`.trim();
       
+      console.log(`[Gmail Trigger] Checking for new emails. Query: "${query}", lastProcessedId:`, lastProcessedId);
+      
       const res = await gmail.users.messages.list({
         userId: 'me',
         maxResults: 5,
@@ -125,6 +127,7 @@ export const gmailPiece: Piece = {
       });
 
       const messages = res.data.messages || [];
+      console.log(`[Gmail Trigger] Found ${messages.length} messages in ${folder}`);
       
       // Handle lastProcessedId as string (backward compatibility) or object
       let effectiveLastId: string | undefined;
@@ -133,9 +136,18 @@ export const gmailPiece: Piece = {
       } else if (lastProcessedId && typeof lastProcessedId === 'object') {
         effectiveLastId = lastProcessedId.lastMessageId || lastProcessedId.runId; 
       }
+      
+      console.log(`[Gmail Trigger] Effective last ID: ${effectiveLastId || 'NONE (first run)'}`);
 
-      // If no messages or the latest is already processed, nothing to do
-      if (messages.length === 0 || (effectiveLastId && messages[0].id === effectiveLastId)) {
+      // If no messages, nothing to do
+      if (messages.length === 0) {
+        console.log(`[Gmail Trigger] No messages found in ${folder}`);
+        return null;
+      }
+      
+      // If the latest message is already processed, nothing to do
+      if (effectiveLastId && messages[0].id === effectiveLastId) {
+        console.log(`[Gmail Trigger] Latest message (${messages[0].id}) already processed`);
         return null;
       }
 
@@ -146,18 +158,25 @@ export const gmailPiece: Piece = {
       
       if (effectiveLastId) {
         const lastIdx = messages.findIndex(m => m.id === effectiveLastId);
+        console.log(`[Gmail Trigger] Last processed message index in current batch: ${lastIdx}`);
+        
         if (lastIdx > 0) {
             // There are messages between messages[0] and effectiveLastId
             // We pick the one right before effectiveLastId in the array (idx - 1)
             // so we process them in chronological order
             targetMessage = messages[lastIdx - 1];
+            console.log(`[Gmail Trigger] Processing next unprocessed message at index ${lastIdx - 1}`);
         } else if (lastIdx === -1) {
             // effectiveLastId not in the 5-item window? 
             // Default to the most recent one to reset the marker
             targetMessage = messages[0];
+            console.log(`[Gmail Trigger] Last processed ID not in current batch, processing latest message`);
         }
+      } else {
+        console.log(`[Gmail Trigger] First run - processing latest message`);
       }
 
+      console.log(`[Gmail Trigger] Fetching details for message: ${targetMessage.id}`);
       const details = await gmail.users.messages.get({
         userId: 'me',
         id: targetMessage.id!
@@ -168,6 +187,8 @@ export const gmailPiece: Piece = {
       const subject = headers.find(h => h.name?.toLowerCase() === 'subject')?.value || '';
       const from = headers.find(h => h.name?.toLowerCase() === 'from')?.value || '';
       const body = extractBody(message.payload) || message.snippet || '';
+
+      console.log(`[Gmail Trigger] ✅ NEW EMAIL DETECTED! Subject: "${subject}", From: ${from}`);
 
       return {
         newLastId: { lastMessageId: targetMessage.id },

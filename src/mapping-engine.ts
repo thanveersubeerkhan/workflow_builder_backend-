@@ -19,7 +19,15 @@ export function resolveVariables(input: any, context: any): any {
   const result = input.replace(/\{\{(.+?)\}\}/g, (match, path) => {
     const val = getObjectPath(context, path.trim());
     console.log(`[Mapping] Resolving "{{${path.trim()}}}" -> ${val === undefined ? 'UNDEFINED' : JSON.stringify(val)}`);
-    return val ?? match;
+    
+    // If value is undefined, keep the original placeholder
+    if (val === undefined) return match;
+    
+    // If value is a string, return it as-is
+    if (typeof val === 'string') return val;
+    
+    // For objects, arrays, numbers, booleans - stringify them properly
+    return JSON.stringify(val);
   });
   return result;
 }
