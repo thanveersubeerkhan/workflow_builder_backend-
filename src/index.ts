@@ -221,19 +221,6 @@ app.post('/api/runs/:runId/retry', async (req, res) => {
   }
 });
 
-app.get('/api/connections/:userId', async (req, res) => {
-  const { userId } = req.params;
-  try {
-    const result = await pool.query(
-      'SELECT service, created_at FROM integrations WHERE user_id = $1',
-      [userId]
-    );
-    res.json(result.rows);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 app.all('/api/test-http', (req, res) => {
   console.log('[Dummy API] Received Request:', {
     method: req.method,

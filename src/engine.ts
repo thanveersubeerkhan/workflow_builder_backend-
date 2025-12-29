@@ -6,7 +6,7 @@ import { schedulePiece } from './pieces/schedule.js';
 import { loggerPiece } from './pieces/logger.js';
 import { githubPiece } from './pieces/github.js';
 import { httpPiece } from './pieces/http.js';
-import { getIntegration, saveIntegration } from './db.js';
+import { getIntegration, getIntegrationById, saveIntegration } from './db.js';
 import { createOAuthClient } from './google.js';
 import { Piece } from './types.js';
 
@@ -51,16 +51,22 @@ export async function runAction({ userId, service, actionName, params }: RunActi
   if (!action) throw new Error(`Action "${actionName}" not found in piece "${service}". Available actions: ${Object.keys(piece.actions).join(', ')}`);
 
   // 1. Get Integration
-  const integration = await getIntegration(userId, service);
+  // 1. Get Integration
+  let integration;
+  if (params && params.authId) {
+      integration = await getIntegrationById(params.authId);
+  } else {
+      integration = await getIntegration(userId, service);
+  }
   
   let auth = null;
   if (integration) {
-    console.log(`[Engine] Found integration for ${service}. Preparing auth...`);
+    if (service !== 'http') console.log(`[Engine] Found integration for ${service}. Preparing auth...`);
     
     if (service === 'github') {
       // GitHub uses a simple bearer token, no refresh logic for now as per previous implementation
       auth = integration.access_token;
-      console.log(`[Engine] Using GitHub access token directly`);
+      // console.log(`[Engine] Using GitHub access token directly`);
     } else {
       // 2. Prepare Google OAuth2 Auth
       const client = createOAuthClient();
@@ -78,6 +84,7 @@ export async function runAction({ userId, service, actionName, params }: RunActi
           const { credentials } = await client.refreshAccessToken();
           
           await saveIntegration({
+            id: integration.id, // CRITICAL: Update this specific integration
             user_id: userId,
             service,
             refresh_token: integration.refresh_token,
@@ -87,11 +94,11 @@ export async function runAction({ userId, service, actionName, params }: RunActi
           });
           
           client.setCredentials(credentials);
-          console.log(`[Engine] Successfully refreshed and saved token for ${service}`);
+          console.log(`[Engine] Successfully refreshed and saved token for ${service} (ID: ${integration.id})`);
         } catch (refreshError: any) {
           const errorMsg = `Failed to refresh Google token for ${service}: ${refreshError.message}`;
           console.error(`[Engine] ${errorMsg}`, refreshError);
-          throw new Error(errorMsg);
+          // throw new Error(errorMsg); // Don't throw, let action fail if auth is bad
         }
       }
       auth = client;
@@ -135,7 +142,12 @@ export async function runTrigger({ userId, service, triggerName, lastProcessedId
   if (!trigger) throw new Error(`Trigger ${triggerName} not found in ${service}`);
 
   // 1. Get Integration (Optional for some pieces)
-  const integration = await getIntegration(userId, service);
+  let integration;
+  if (params && params.authId) {
+      integration = await getIntegrationById(params.authId);
+  } else {
+      integration = await getIntegration(userId, service);
+  }
   
   let auth = null;
   if (integration) {
@@ -155,6 +167,7 @@ export async function runTrigger({ userId, service, triggerName, lastProcessedId
         if (integration.expiry_date && (integration.expiry_date < now + 5 * 60 * 1000)) {
             const { credentials } = await client.refreshAccessToken();
             await saveIntegration({
+                id: integration.id, // CRITICAL: Update this specific integration
                 user_id: userId,
                 service,
                 refresh_token: integration.refresh_token,

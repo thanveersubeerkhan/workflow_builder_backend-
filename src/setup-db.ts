@@ -22,13 +22,13 @@ async function setup() {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID REFERENCES users(id) ON DELETE CASCADE,
       service TEXT NOT NULL,
+      name TEXT, 
       refresh_token TEXT,
       access_token TEXT,
       expiry_date BIGINT,
       scopes TEXT,
       created_at TIMESTAMP DEFAULT now(),
-      updated_at TIMESTAMP DEFAULT now(),
-      UNIQUE (user_id, service)
+      updated_at TIMESTAMP DEFAULT now()
     );
 
     ALTER TABLE integrations ALTER COLUMN refresh_token DROP NOT NULL;
