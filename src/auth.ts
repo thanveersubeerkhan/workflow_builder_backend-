@@ -103,7 +103,10 @@ authRouter.get('/connect/:service', (req, res) => {
     : client.generateAuthUrl({
         access_type: 'offline',
         prompt: 'consent',
-        scope: SERVICE_SCOPES[service],
+        scope: [
+          ...(SERVICE_SCOPES[service] || []), 
+          ...SERVICE_SCOPES.identity
+        ],
         state: JSON.stringify({ userId, service, callbackUrl, name: req.query.name })
       });
 
@@ -125,6 +128,10 @@ authRouter.get('/callback/:service', async (req: any, res: any) => {
     }
 
     let tokens: any;
+    let external_id: string | undefined;
+    let external_username: string | undefined;
+    let external_avatar: string | undefined;
+
     if (service === 'github') {
       console.log('GitHub callback');
       const githubData = await getGitHubAccessToken(code as string);
@@ -132,14 +139,30 @@ authRouter.get('/callback/:service', async (req: any, res: any) => {
 
       tokens = {
         access_token: githubData.access_token,
-        refresh_token: 'github_no_refresh_token', // GitHub does NOT use refresh tokens for standard OAuth apps
+        refresh_token: 'github_no_refresh_token',
         expiry_date: 1 * 60 * 60 * 1000,
         scope: githubData.githubUser?.url,
       };
-    }else {
+
+      external_id = githubData.githubUser?.id?.toString();
+      external_username = githubData.githubUser?.login;
+      external_avatar = githubData.githubUser?.avatar_url;
+    } else {
       const client = createOAuthClient(`/auth/callback/${service}`);
       const { tokens: googleTokens } = await client.getToken(code as string);
       tokens = googleTokens;
+
+      // For Google, fetch user info to distinguish accounts
+      client.setCredentials(tokens);
+      const oauth2 = google.oauth2({ version: 'v2', auth: client });
+      try {
+        const { data: userInfo } = await oauth2.userinfo.get();
+        external_id = userInfo.id || undefined;
+        external_username = userInfo.email || undefined;
+        external_avatar = userInfo.picture || undefined;
+      } catch (err) {
+        console.warn('Could not fetch Google user info for connection:', err);
+      }
     }
 
     if (!tokens.refresh_token && service !== 'github') {
@@ -150,11 +173,14 @@ authRouter.get('/callback/:service', async (req: any, res: any) => {
     await saveIntegration({
       user_id: userId,
       service,
+      external_id,
+      external_username,
+      external_avatar,
       refresh_token: tokens.refresh_token!,
       access_token: tokens.access_token ?? undefined,
       expiry_date: tokens.expiry_date ?? undefined,
       scopes: tokens.scope ?? undefined,
-      name // Pass the name if provided
+      name
     });
 
     // Redirect to specified path (appended to frontend URL) or default integration page

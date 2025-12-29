@@ -10,6 +10,9 @@ export interface GoogleIntegration {
   id?: string;
   user_id: string;
   service: string;
+  external_id?: string;
+  external_username?: string;
+  external_avatar?: string;
   refresh_token: string;
   access_token?: string;
   expiry_date?: number;

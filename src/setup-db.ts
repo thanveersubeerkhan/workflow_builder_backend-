@@ -37,8 +37,14 @@ async function setup() {
     -- Ensure unique constraint exists for ON CONFLICT
     DO $$ 
     BEGIN 
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'integrations_user_id_service_unique') THEN
-        ALTER TABLE integrations ADD CONSTRAINT integrations_user_id_service_unique UNIQUE (user_id, service);
+      -- Remove old constraint if it still exists (cleanup)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'integrations_user_id_service_unique') THEN
+        ALTER TABLE integrations DROP CONSTRAINT integrations_user_id_service_unique;
+      END IF;
+
+      -- Add new constraint
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'integrations_user_id_service_external_id_unique') THEN
+        ALTER TABLE integrations ADD CONSTRAINT integrations_user_id_service_external_id_unique UNIQUE (user_id, service, external_id);
       END IF;
     END $$;
 
