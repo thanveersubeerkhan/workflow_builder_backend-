@@ -120,14 +120,15 @@ async function seedServices() {
 
   for (const s of services) {
     await pool.query(
-      `INSERT INTO connectors_metadata (id, name, description, icon, color)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO connectors_metadata (id, name, description, icon, color, category)
+       VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name,
          description = EXCLUDED.description,
          icon = EXCLUDED.icon,
-         color = EXCLUDED.color`,
-      [s.id, s.name, s.description, s.icon, s.color]
+         color = EXCLUDED.color,
+         category = EXCLUDED.category`,
+      [s.id, s.name, s.description, s.icon, s.color, s.category]
     );
   }
   console.log('✅ Service metadata seeded.');

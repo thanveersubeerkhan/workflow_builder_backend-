@@ -1,6 +1,7 @@
 import express from 'express';
 import { createOAuthClient, SERVICE_SCOPES } from './google.js';
 import { getGitHubAuthUrl, getGitHubAccessToken } from './github.js';
+import { getMicrosoftAuthUrl, getMicrosoftAccessToken } from './teams.js';
 import { saveIntegration, getOrCreateUser } from './db.js';
 import { google } from 'googleapis';
 import jwt from 'jsonwebtoken';
@@ -88,7 +89,7 @@ authRouter.get('/connect/:service', (req, res) => {
   const { service } = req.params;
   const { userId, callbackUrl } = req.query;
 
-  if (!SERVICE_SCOPES[service] && service !== 'github') {
+  if (!SERVICE_SCOPES[service] && service !== 'github' && service !== 'microsoft') {
     return res.status(400).send('Unsupported service');
   }
 
@@ -98,17 +99,23 @@ authRouter.get('/connect/:service', (req, res) => {
 
   const client = createOAuthClient(`/auth/callback/${service}`);
   
-  const url = service === 'github' 
-    ? getGitHubAuthUrl(userId as string, callbackUrl as string)
-    : client.generateAuthUrl({
+  let url: string;
+  
+  if (service === 'github') {
+     url = getGitHubAuthUrl(userId as string, callbackUrl as string);
+  } else if (service === 'microsoft') {
+     url = getMicrosoftAuthUrl(userId as string, callbackUrl as string);
+  } else {
+     url = client.generateAuthUrl({
         access_type: 'offline',
-        prompt: 'consent',
+        prompt: 'select_account consent',
         scope: [
           ...(SERVICE_SCOPES[service] || []), 
           ...SERVICE_SCOPES.identity
         ],
         state: JSON.stringify({ userId, service, callbackUrl, name: req.query.name })
       });
+  }
 
   res.redirect(url);
 });
@@ -147,6 +154,21 @@ authRouter.get('/callback/:service', async (req: any, res: any) => {
       external_id = githubData.githubUser?.id?.toString();
       external_username = githubData.githubUser?.login;
       external_avatar = githubData.githubUser?.avatar_url;
+    } else if (service === 'microsoft') {
+        const msData = await getMicrosoftAccessToken(code as string);
+        console.log('Microsoft data:', msData.microsoftUser);
+
+        tokens = {
+            access_token: msData.access_token,
+            refresh_token: msData.refresh_token,
+            expiry_date: msData.expires_in ? msData.expires_in * 1000 : 3600 * 1000,
+            scope: msData.scope
+        };
+
+        external_id = msData.microsoftUser.id;
+        // Prioritize mail -> displayName -> userPrincipalName (UPN is often ugly for guest accounts)
+        external_username = msData.microsoftUser.mail || msData.microsoftUser.displayName || msData.microsoftUser.userPrincipalName;
+        external_avatar = msData.microsoftUser.avatar_url;
     } else {
       const client = createOAuthClient(`/auth/callback/${service}`);
       const { tokens: googleTokens } = await client.getToken(code as string);
