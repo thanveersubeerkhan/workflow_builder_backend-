@@ -49,11 +49,35 @@ export const SERVICES_METADATA: ServiceDefinition[] = [
     category: 'development'
   },
   {
-    id: 'microsoft',
-    name: 'Microsoft Teams',
-    description: 'Collaborate with your team via channels and messages.',
-    icon: 'https://img.icons8.com/color/48/microsoft-teams.png',
-    color: 'text-indigo-600',
+    id: 'outlook',
+    name: 'Outlook',
+    description: 'Send and receive emails via Microsoft Outlook.',
+    icon: 'https://img.icons8.com/color/48/microsoft-outlook-2019.png',
+    color: 'text-blue-500',
     category: 'communication'
+  },
+  {
+    id: 'onedrive',
+    name: 'OneDrive',
+    description: 'Manage files and folders in OneDrive.',
+    icon: 'https://img.icons8.com/?size=100&id=PnENrLMMW4eV&format=png&color=000000', // Assuming a standard icon URL
+    color: 'text-blue-700', // Using a Tailwind CSS color class for consistency
+    category: 'storage' // Assuming category based on description
+  },
+  {
+    id: 'excel',
+    name: 'Excel',
+    description: 'Manage spreadsheets in Microsoft Excel.',
+    icon: 'https://img.icons8.com/color/48/microsoft-excel-2019.png',
+    color: 'text-green-600',
+    category: 'productivity'
+  },
+  {
+    id: 'word',
+    name: 'Word',
+    description: 'Create and edit documents in Microsoft Word.',
+    icon: 'https://img.icons8.com/color/48/microsoft-word-2019.png',
+    color: 'text-blue-700',
+    category: 'productivity'
   }
 ];

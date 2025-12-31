@@ -29,10 +29,16 @@ export interface PropertyMetadata {
 
 export interface ActionParameterMetadata {
   name: string;
-  type: 'string' | 'number' | 'boolean' | 'array' | 'connection' | 'select' | 'json';
+  type: 'string' | 'number' | 'boolean' | 'array' | 'connection' | 'select' | 'json' | 'dynamic-select';
   label: string;
   description?: string;
   required?: boolean;
+  default?: any;
+  options?: { label: string; value: string }[];
+  dynamicOptions?: {
+    action: string; // The action to call to fetch options (e.g., 'listFolders')
+    dependsOn?: string[]; // Parameters that must be set first (e.g., ['connection'])
+  };
 }
 
 export interface Piece {

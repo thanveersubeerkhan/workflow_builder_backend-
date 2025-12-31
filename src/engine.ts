@@ -6,8 +6,13 @@ import { schedulePiece } from './pieces/schedule.js';
 import { loggerPiece } from './pieces/logger.js';
 import { githubPiece } from './pieces/github.js';
 import { httpPiece } from './pieces/http.js';
+import { outlookPiece } from './pieces/outlook.js';
+import { excelPiece } from './pieces/excel.js';
+import { wordPiece } from './pieces/word.js';
+import { onedrivePiece } from './pieces/onedrive.js';
 import { getIntegration, getIntegrationById, saveIntegration } from './db.js';
 import { createOAuthClient } from './google.js';
+import { refreshMicrosoftAccessToken } from './teams.js';
 import { Piece } from './types.js';
 
 const pieces: Record<string, Piece> = {
@@ -18,7 +23,11 @@ const pieces: Record<string, Piece> = {
   schedule: schedulePiece,
   logger: loggerPiece,
   github: githubPiece,
-  http: httpPiece
+  http: httpPiece,
+  outlook: outlookPiece,
+  excel: excelPiece,
+  word: wordPiece,
+  onedrive: onedrivePiece
 };
 
 export function getPiecesMetadata() {
@@ -57,6 +66,12 @@ export async function runAction({ userId, service, actionName, params }: RunActi
       integration = await getIntegrationById(params.authId);
   } else {
       integration = await getIntegration(userId, service);
+      
+      // Fallback for unified Microsoft connection
+      if (!integration && ['outlook', 'excel', 'word', 'teams', 'onedrive'].includes(service)) {
+          console.log(`[Engine] No specific integration for ${service}, checking for unified 'microsoft' connection...`);
+          integration = await getIntegration(userId, 'microsoft');
+      }
   }
   
   let auth = null;
@@ -67,6 +82,34 @@ export async function runAction({ userId, service, actionName, params }: RunActi
       // GitHub uses a simple bearer token, no refresh logic for now as per previous implementation
       auth = integration.access_token;
       // console.log(`[Engine] Using GitHub access token directly`);
+    } else if (['outlook', 'excel', 'word', 'teams', 'onedrive', 'microsoft'].includes(service)) {
+        // Microsoft Refresh Logic
+        const now = Date.now();
+        auth = integration.access_token;
+  
+        if (integration.expiry_date && (integration.expiry_date < now + 5 * 60 * 1000)) {
+          try {
+            console.log(`[Engine] Token expired or expiring soon for Microsoft (${service}). Refreshing...`);
+            const data = await refreshMicrosoftAccessToken(integration.refresh_token, service);
+            
+            await saveIntegration({
+              id: integration.id,
+              user_id: userId,
+              service: integration.service, // Use the actual integration service name
+              refresh_token: data.refresh_token || integration.refresh_token,
+              access_token: data.access_token,
+              expiry_date: Date.now() + (data.expires_in * 1000),
+              scopes: data.scope || integration.scopes
+            });
+            
+            // CRITICAL FIX: Use the refreshed token!
+            auth = data.access_token;
+            
+            console.log(`[Engine] Successfully refreshed Microsoft token for ${service} (ID: ${integration.id})`);
+          } catch (refreshError: any) {
+            console.error(`[Engine] Failed to refresh Microsoft token for ${service}:`, refreshError.message);
+          }
+        }
     } else {
       // 2. Prepare Google OAuth2 Auth
       const client = createOAuthClient();
@@ -154,6 +197,26 @@ export async function runTrigger({ userId, service, triggerName, lastProcessedId
   if (integration) {
     if (service === 'github') {
         auth = integration.access_token;
+    } else if (['outlook', 'excel', 'word', 'teams', 'onedrive', 'microsoft'].includes(service)) {
+        const now = Date.now();
+        auth = integration.access_token;
+        if (integration.expiry_date && (integration.expiry_date < now + 5 * 60 * 1000)) {
+            try {
+                const data = await refreshMicrosoftAccessToken(integration.refresh_token, service);
+                await saveIntegration({
+                    id: integration.id,
+                    user_id: userId,
+                    service,
+                    refresh_token: data.refresh_token || integration.refresh_token,
+                    access_token: data.access_token,
+                    expiry_date: Date.now() + (data.expires_in * 1000),
+                    scopes: data.scope || integration.scopes
+                });
+                auth = data.access_token;
+            } catch (err: any) {
+                console.error(`[Engine] Microsoft trigger refresh failed for ${service}:`, err.message);
+            }
+        }
     } else {
         // 2. Prepare Auth
         const client = createOAuthClient();

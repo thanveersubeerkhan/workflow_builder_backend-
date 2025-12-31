@@ -33,6 +33,20 @@ export const docsPiece: Piece = {
       });
 
       return res.data;
+    },
+
+    listDocs: async ({ auth }) => {
+      const drive = google.drive({ version: 'v3', auth });
+      try {
+        const res = await drive.files.list({
+          pageSize: 100,
+          q: "mimeType='application/vnd.google-apps.document' and trashed=false"
+        });
+        return { files: res.data.files || [] };
+      } catch (err: any) {
+        console.error('[Docs] listDocs Error:', err.message);
+        throw err;
+      }
     }
   },
   metadata: {
@@ -48,6 +62,14 @@ export const docsPiece: Piece = {
         outputSchema: [
           { name: 'documentId', type: 'string' },
           { name: 'replies', type: 'array', items: { name: 'reply', type: 'object' } }
+        ]
+      },
+      listDocs: {
+        outputSchema: [
+          { name: 'files', type: 'array', items: { name: 'file', type: 'object', properties: [
+            { name: 'id', type: 'string' },
+            { name: 'name', type: 'string' }
+          ]}}
         ]
       }
     }

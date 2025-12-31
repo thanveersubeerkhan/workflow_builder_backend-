@@ -107,6 +107,17 @@ export const gmailPiece: Piece = {
         body,
         ...message
       };
+    },
+
+    listLabels: async ({ auth }) => {
+      const gmail = google.gmail({ version: 'v1', auth });
+      const res = await gmail.users.labels.list({ userId: 'me' });
+      return { 
+        labels: res.data.labels?.map(l => ({
+          id: l.name,
+          name: l.name
+        })) || []
+      };
     }
   },
 
@@ -217,6 +228,16 @@ export const gmailPiece: Piece = {
           { name: 'resultSizeEstimate', type: 'number', description: 'Estimated total number of results.' }
         ]
       },
+      listLabels: {
+        label: 'List Labels',
+        description: 'Lists all Gmail labels.',
+        outputSchema: [
+          { name: 'labels', type: 'array', items: { name: 'label', type: 'object', properties: [
+            { name: 'id', type: 'string' },
+            { name: 'name', type: 'string' }
+          ]}}
+        ]
+      },
       getMessage: {
         label: 'Get Message',
         description: 'Get a specific message by its ID.',
@@ -235,6 +256,19 @@ export const gmailPiece: Piece = {
     },
     triggers: {
       newEmail: {
+        label: 'New Email',
+        description: 'Triggers when a new email arrives in a specific label.',
+        parameters: [
+          { 
+            name: 'folder', 
+            label: 'Label', 
+            type: 'dynamic-select', 
+            required: true, 
+            default: 'INBOX',
+            dynamicOptions: { action: 'listLabels' }
+          },
+          { name: 'q', label: 'Search Query', type: 'string', description: 'Additional search query (e.g. from:example.com)' }
+        ],
         outputSchema: [
           { name: 'id', type: 'string', description: 'The unique ID of the message.' },
           { name: 'threadId', type: 'string', description: 'The ID of the thread which contains this message.' },

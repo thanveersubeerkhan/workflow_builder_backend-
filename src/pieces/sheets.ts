@@ -96,11 +96,49 @@ export const sheetsPiece: Piece = {
         },
       });
       return res.data;
+    },
+
+    listSpreadsheets: async ({ auth }) => {
+      const drive = google.drive({ version: 'v3', auth });
+      const res = await drive.files.list({
+        pageSize: 100,
+        q: "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
+        fields: 'files(id, name)',
+      });
+      return { files: res.data.files };
+    },
+
+    listSheets: async ({ auth, params }) => {
+      const { spreadsheetId } = params;
+      if (!spreadsheetId) throw new Error('spreadsheetId is required');
+      console.log(`[Sheets] Listing sheets for spreadsheet: ${spreadsheetId}`);
+      const sheets = google.sheets({ version: 'v4', auth });
+      try {
+        const res = await sheets.spreadsheets.get({
+          spreadsheetId
+        });
+        return { 
+          sheets: res.data.sheets?.map(s => ({
+            name: s.properties?.title,
+            id: s.properties?.title // We usually use title for range
+          }))
+        };
+      } catch (err: any) {
+        console.error('[Sheets] listSheets Error:', err.message);
+        throw err;
+      }
     }
   },
   metadata: {
     actions: {
       appendRow: {
+        label: 'Append Row',
+        description: 'Appends a row of values to the end of a sheet.',
+        parameters: [
+          { name: 'spreadsheetId', label: 'Spreadsheet', type: 'dynamic-select', required: true, dynamicOptions: { action: 'listSpreadsheets' } },
+          { name: 'range', label: 'Sheet Name', type: 'dynamic-select', required: true, dynamicOptions: { action: 'listSheets', dependsOn: ['spreadsheetId'] } },
+          { name: 'values', label: 'Values', type: 'array', required: true }
+        ],
         outputSchema: [
           { name: 'spreadsheetId', type: 'string' },
           { name: 'tableRange', type: 'string' },
@@ -113,6 +151,13 @@ export const sheetsPiece: Piece = {
         ]
       },
       appendRowSmart: {
+        label: 'Append Row Smart',
+        description: 'Similar to appendRow, but automatically creates the worksheet if it doesn\'t exist.',
+        parameters: [
+          { name: 'spreadsheetId', label: 'Spreadsheet', type: 'dynamic-select', required: true, dynamicOptions: { action: 'listSpreadsheets' } },
+          { name: 'range', label: 'Sheet Name', type: 'string', required: true },
+          { name: 'values', label: 'Values', type: 'array', required: true }
+        ],
         outputSchema: [
           { name: 'spreadsheetId', type: 'string' },
           { name: 'tableRange', type: 'string' },
@@ -125,6 +170,12 @@ export const sheetsPiece: Piece = {
         ]
       },
       getValues: {
+        label: 'Get Values',
+        description: 'Retrieves values from a specific range.',
+        parameters: [
+          { name: 'spreadsheetId', label: 'Spreadsheet', type: 'dynamic-select', required: true, dynamicOptions: { action: 'listSpreadsheets' } },
+          { name: 'range', label: 'Sheet Name', type: 'dynamic-select', required: true, dynamicOptions: { action: 'listSheets', dependsOn: ['spreadsheetId'] } }
+        ],
         outputSchema: [
           { name: 'values', type: 'array', items: { name: 'row', type: 'array', items: { name: 'cell', type: 'string' } } }
         ]
@@ -136,6 +187,22 @@ export const sheetsPiece: Piece = {
           { name: 'properties', type: 'object', properties: [
             { name: 'title', type: 'string' }
           ]}
+        ]
+      },
+      listSpreadsheets: {
+        outputSchema: [
+          { name: 'files', type: 'array', items: { name: 'file', type: 'object', properties: [
+            { name: 'id', type: 'string' },
+            { name: 'name', type: 'string' }
+          ]}}
+        ]
+      },
+      listSheets: {
+        outputSchema: [
+          { name: 'sheets', type: 'array', items: { name: 'sheet', type: 'object', properties: [
+            { name: 'id', type: 'string' },
+            { name: 'name', type: 'string' }
+          ]}}
         ]
       }
     }

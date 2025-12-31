@@ -22,6 +22,20 @@ export const drivePiece: Piece = {
         },
       });
       return res.data;
+    },
+
+    listFolders: async ({ auth }) => {
+      const drive = google.drive({ version: 'v3', auth });
+      const res = await drive.files.list({
+        q: "mimeType='application/vnd.google-apps.folder' and trashed=false",
+        fields: 'files(id, name)',
+      });
+      return { 
+        folders: res.data.files?.map(f => ({
+          id: f.id,
+          name: f.name
+        })) || []
+      };
     }
   },
   metadata: {
@@ -36,10 +50,32 @@ export const drivePiece: Piece = {
         ]
       },
       createFolder: {
+        label: 'Create Folder',
+        description: 'Creates a new folder.',
+        parameters: [
+          { name: 'name', label: 'Folder Name', type: 'string', required: true },
+          { 
+            name: 'parent', 
+            label: 'Parent Folder', 
+            type: 'dynamic-select', 
+            description: 'Optional parent folder',
+            dynamicOptions: { action: 'listFolders' }
+          }
+        ],
         outputSchema: [
           { name: 'id', type: 'string' },
           { name: 'name', type: 'string' },
           { name: 'mimeType', type: 'string' }
+        ]
+      },
+      listFolders: {
+        label: 'List Folders',
+        description: 'Lists all folders in Drive.',
+        outputSchema: [
+          { name: 'folders', type: 'array', items: { name: 'folder', type: 'object', properties: [
+            { name: 'id', type: 'string' },
+            { name: 'name', type: 'string' }
+          ]}}
         ]
       }
     }

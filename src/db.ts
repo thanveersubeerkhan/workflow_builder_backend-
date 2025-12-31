@@ -201,6 +201,27 @@ export async function getAllIntegrations(): Promise<GoogleIntegration[]> {
   }));
 }
 
+/**
+ * Fetches integrations that are expiring within a window, but not too far in the past.
+ * @param windowMs Threshold in the future (e.g. 35 mins)
+ * @param ignoreThresholdMs Threshold in the past to stop trying (e.g. 2 days)
+ */
+export async function getExpiringIntegrations(windowMs: number, ignoreThresholdMs: number): Promise<GoogleIntegration[]> {
+    const now = Date.now();
+    const minExpiry = now - ignoreThresholdMs;
+    const maxExpiry = now + windowMs;
+
+    const res = await pool.query(
+        'SELECT * FROM integrations WHERE expiry_date > $1 AND expiry_date < $2',
+        [minExpiry, maxExpiry]
+    );
+
+    return res.rows.map(row => ({
+        ...row,
+        refresh_token: decrypt(row.refresh_token)
+    }));
+}
+
 export async function getIntegrations(userId: string, service: string): Promise<GoogleIntegration[]> {
   const res = await pool.query(
       'SELECT * FROM integrations WHERE user_id = $1 AND service = $2 ORDER BY created_at DESC',

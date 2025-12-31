@@ -78,6 +78,43 @@ app.post('/api/run', async (req: express.Request, res: express.Response) => {
   }
 });
 
+app.post('/api/pieces/options', async (req: express.Request, res: express.Response) => {
+  const { userId, service, actionName, params } = req.body;
+  if (!userId || !service || !actionName) {
+    return res.status(400).json({ success: false, error: 'userId, service, and actionName are required' });
+  }
+
+  try {
+    const result: any = await runAction({ userId, service, actionName, params });
+    
+    // Normalize response into { label, value } pairs
+    let options: { label: string, value: any }[] = [];
+
+    if (Array.isArray(result)) {
+      options = result.map(item => ({
+        label: item.name || item.label || item.title || item.id || String(item),
+        value: item.id || item.value || item.name || item
+      }));
+    } else if (result && typeof result === 'object') {
+      // Handle pieces returning wrappers like { files: [...] }, { labels: [...] }, etc.
+      const possibleKeys = ['files', 'labels', 'folders', 'sheets', 'repos', 'items', 'values'];
+      const key = possibleKeys.find(k => Array.isArray(result[k]));
+      
+      const list = key ? result[key] : (Array.isArray(result.options) ? result.options : []);
+      
+      options = list.map((item: any) => ({
+        label: item.name || item.label || item.title || item.id || (typeof item === 'string' ? item : 'Untitled'),
+        value: item.id || item.value || item.name || item
+      }));
+    }
+
+    res.json({ success: true, options });
+  } catch (error: any) {
+    console.error(`[API] Dynamic Options Error (${service}.${actionName}):`, error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.post('/api/flows', async (req: express.Request, res: express.Response) => {
   const { userId, name, ui_definition } = req.body;
   const definition = mapUIToDefinition(ui_definition || { nodes: [], edges: [] });

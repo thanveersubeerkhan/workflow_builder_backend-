@@ -311,6 +311,115 @@ app.post('/api/run', async (req: express.Request, res: express.Response) => {
   }
 });
 
+// Dynamic Options API - Standardized for all pieces
+app.post('/api/pieces/options', async (req: express.Request, res: express.Response) => {
+  const { userId, service, actionName, params } = req.body;
+  if (!userId || !service || !actionName) {
+    return res.status(400).json({ success: false, error: 'userId, service, and actionName are required' });
+  }
+
+  try {
+    const result: any = await runAction({ userId, service, actionName, params });
+    
+    // Normalize response into { label, value } pairs
+    let options: { label: string, value: any }[] = [];
+
+    if (Array.isArray(result)) {
+      options = result.map(item => ({
+        label: item.name || item.label || item.title || item.id || String(item),
+        value: item.id || item.value || item.name || item
+      }));
+    } else if (result && typeof result === 'object') {
+      // Handle pieces returning wrappers like { files: [...] }, { labels: [...] }, etc.
+      const possibleKeys = ['files', 'labels', 'folders', 'sheets', 'repos', 'items', 'values'];
+      const key = possibleKeys.find(k => Array.isArray(result[k]));
+      
+      const list = key ? result[key] : (Array.isArray(result.options) ? result.options : []);
+      
+      options = list.map((item: any) => ({
+        label: item.name || item.label || item.title || item.id || (typeof item === 'string' ? item : 'Untitled'),
+        value: item.id || item.value || item.name || item
+      }));
+    }
+
+    res.json({ success: true, options });
+  } catch (error: any) {
+    console.error(`[API] Dynamic Options Error (${service}.${actionName}):`, error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Dynamic Options API - Fetch folders/files for dynamic selects
+app.post('/api/dynamic-options', async (req: express.Request, res: express.Response) => {
+  const { userId, service, action, connectionId, context } = req.body;
+  
+  if (!userId || !service || !action) {
+    return res.status(400).json({ error: 'Missing required fields: userId, service, action' });
+  }
+
+  try {
+    // Get the integration for this service
+    const integration = connectionId 
+      ? await getIntegrationById(connectionId)
+      : await getIntegration(userId, service);
+
+    if (!integration) {
+      return res.status(404).json({ error: 'Integration not found' });
+    }
+
+    // Call the action to fetch options
+    const result = await runAction({
+      userId,
+      service,
+      actionName: action,
+      params: { 
+        ...(context || {}), 
+        authId: connectionId || (context ? context.authId : undefined) 
+      }
+    });
+
+    if (!result) {
+      return res.json({ success: true, options: [] });
+    }
+
+    // Transform the result into options format
+    let options: { label: string; value: string }[] = [];
+
+    if (result.folders && Array.isArray(result.folders)) {
+      options = result.folders.map((folder: any) => ({
+        label: folder.name,
+        value: folder.id
+      }));
+    } else if (result.files && Array.isArray(result.files)) {
+      options = result.files.map((file: any) => ({
+        label: file.name,
+        value: file.id
+      }));
+    } else if (result.chats && Array.isArray(result.chats)) {
+      options = result.chats.map((chat: any) => ({
+        label: chat.topic || `Chat (${chat.chatType})`,
+        value: chat.id
+      }));
+    } else if (result.sheets && Array.isArray(result.sheets)) {
+      options = result.sheets.map((sheet: any) => ({
+        label: sheet.name,
+        value: sheet.id
+      }));
+    } else if (Array.isArray(result)) {
+      // Fallback for actions that return a direct array
+      options = result.map((item: any) => ({
+        label: item.name || item.label || item.title || String(item),
+        value: item.id || item.value || String(item)
+      }));
+    }
+
+    res.json({ success: true, options });
+  } catch (error: any) {
+    console.error('Dynamic options error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.post('/api/flows', async (req: express.Request, res: express.Response) => {
   const { userId, name, ui_definition, definition: explicitDef } = req.body;
   

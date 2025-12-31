@@ -1,0 +1,56 @@
+[
+  {
+    "service": "docs",
+    "scopes": "https://www.googleapis.com/auth/userinfo.email openid https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/documents.readonly",
+    "expires": "31/12/2025, 10:55:15 am",
+    "token_prefix": "ya29.a0Aa7pCA_Q..."
+  },
+  {
+    "service": "github",
+    "scopes": "https://api.github.com/users/testissue-maker",
+    "expires": "31/12/2025, 3:40:02 am",
+    "token_prefix": "gho_3P8A3G3FquY..."
+  },
+  {
+    "service": "drive",
+    "scopes": "https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/drive.file openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/drive.readonly",
+    "expires": "31/12/2025, 10:55:15 am",
+    "token_prefix": "ya29.a0Aa7pCA8W..."
+  },
+  {
+    "service": "onedrive",
+    "scopes": "Files.ReadWrite User.Read Mail.Send Mail.Read",
+    "expires": "31/12/2025, 10:55:17 am",
+    "token_prefix": "EwA4BMl6BAAUu4T..."
+  },
+  {
+    "service": "word",
+    "scopes": "Files.ReadWrite User.Read Mail.Send Mail.Read",
+    "expires": "31/12/2025, 10:55:18 am",
+    "token_prefix": "EwA4BMl6BAAUu4T..."
+  },
+  {
+    "service": "outlook",
+    "scopes": "Mail.Send Mail.Read User.Read Files.ReadWrite",
+    "expires": "31/12/2025, 10:55:19 am",
+    "token_prefix": "EwA4BMl6BAAUu4T..."
+  },
+  {
+    "service": "sheets",
+    "scopes": "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile openid https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/userinfo.email",
+    "expires": "31/12/2025, 10:55:20 am",
+    "token_prefix": "ya29.a0Aa7pCA-i..."
+  },
+  {
+    "service": "excel",
+    "scopes": "Files.ReadWrite User.Read Mail.Send Mail.Read",
+    "expires": "31/12/2025, 10:55:21 am",
+    "token_prefix": "EwA4BMl6BAAUu4T..."
+  },
+  {
+    "service": "gmail",
+    "scopes": "https://www.googleapis.com/auth/userinfo.email openid https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/gmail.readonly",
+    "expires": "31/12/2025, 10:55:16 am",
+    "token_prefix": "ya29.a0Aa7pCA9W..."
+  }
+]

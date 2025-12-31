@@ -1,6 +1,8 @@
 import express from 'express';
 import { getIntegration, deleteIntegration, pool, decrypt } from './db.js';
+import { refreshGitHubAccessToken, revokeGitHubToken } from './github.js';
 import { createOAuthClient } from './google.js';
+import { refreshMicrosoftAccessToken, revokeMicrosoftToken } from './teams.js';
 
 export const disconnectRouter = express.Router();
 
@@ -14,7 +16,26 @@ disconnectRouter.delete('/connections/:id', async (req, res) => {
       const integration = resById.rows[0];
   
       // 2. Revoke (Best effort)
-      if (integration.service !== 'github' && integration.refresh_token) {
+      const isMicrosoft = ['microsoft', 'outlook', 'excel', 'word', 'teams', 'onedrive'].includes(integration.service);
+      const isGitHub = integration.service === 'github';
+
+      if (integration.service === 'github') {
+        // GitHub specific revocation
+        if (integration.access_token) {
+           try {
+             await revokeGitHubToken(integration.access_token); 
+           } catch (e: any) {
+             console.warn(`[Disconnect] GitHub token revoke failed for ${id}:`, e.message);
+           }
+        }
+      } else if (isMicrosoft) {
+        // Microsoft Revocation
+        if (integration.access_token) {
+          console.log(`[Disconnect] Revoking sessions for Microsoft connection ${id}`);
+          await revokeMicrosoftToken(integration.access_token);
+        }
+      } else if (integration.refresh_token) {
+        // Google / Others
         try {
           const client = createOAuthClient();
           await client.revokeToken(decrypt(integration.refresh_token));
@@ -24,9 +45,21 @@ disconnectRouter.delete('/connections/:id', async (req, res) => {
         }
       }
   
-      // 3. Delete
       await pool.query('DELETE FROM integrations WHERE id = $1', [id]);
-      res.json({ success: true, message: 'Connection removed' });
+      
+      // Delay for stability
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const response: any = { success: true, message: 'Connection removed' };
+      if (isMicrosoft) {
+        // Force logout from Microsoft to clear session cookies
+        response.logoutUrl = 'https://login.microsoftonline.com/common/oauth2/v2.0/logout';
+      } else if (isGitHub) {
+        // GitHub logout
+        response.logoutUrl = 'https://github.com/logout';
+      }
+      
+      res.json(response);
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to remove connection', details: error.message });
     }

@@ -20,6 +20,7 @@ export function getGitHubAuthUrl(userId: string, callbackUrl?: string) {
     redirect_uri: redirectUri,
     scope: GITHUB_SCOPES,
     state,
+    prompt: 'consent',
   });
 
   return `${baseUrl}?${params.toString()}`;
@@ -35,7 +36,10 @@ export async function getGitHubAccessToken(code: string) {
       code,
       redirect_uri: `${process.env.BASE_URL}/auth/callback/github`,
     },
-    { headers: { Accept: 'application/json' } }
+    { 
+      headers: { Accept: 'application/json' },
+      timeout: 30000
+    }
   );
 
   const tokenData = tokenRes.data;
@@ -49,6 +53,7 @@ export async function getGitHubAccessToken(code: string) {
     headers: {
       Authorization: `Bearer ${tokenData.access_token}`,
     },
+    timeout: 30000
   });
 
   return {
@@ -67,7 +72,10 @@ export async function refreshGitHubAccessToken(refreshToken: string) {
         grant_type: 'refresh_token',
         refresh_token: refreshToken
       },
-      { headers: { Accept: 'application/json' } }
+      { 
+        headers: { Accept: 'application/json' },
+        timeout: 30000
+      }
     );
   
     const tokenData = tokenRes.data;
@@ -105,7 +113,8 @@ export async function getUserRepos(accessToken: string) {
     params: {
         sort: 'updated',
         per_page: 100
-    }
+    },
+    timeout: 30000
   });
 
   return response.data;
@@ -138,3 +147,25 @@ export async function getIssueDetails(accessToken: string, owner: string, repo: 
   return response.data;
 }
 
+export async function revokeGitHubToken(accessToken: string) {
+  // GitHub requires Basic Auth with Client ID & Secret to revoke
+  const credentials = Buffer.from(`${process.env.GITHUB_CLIENT_ID}:${process.env.GITHUB_CLIENT_SECRET}`).toString('base64');
+
+  try {
+      await axios.delete(`https://api.github.com/applications/${process.env.GITHUB_CLIENT_ID}/grant`, {
+          headers: {
+              Authorization: `Basic ${credentials}`,
+              Accept: 'application/json'
+          },
+          data: {
+              access_token: accessToken
+          }
+      });
+      console.log('[GitHub] Token revoked successfully');
+      return true;
+  } catch (error: any) {
+      console.warn('[GitHub] Failed to revoke token:', error.response?.data || error.message);
+      // Don't throw, just log. The token might already be invalid.
+      return false;
+  }
+}
