@@ -61,7 +61,7 @@ export async function runAction({ userId, service, actionName, params }: RunActi
 
   // 1. Get Integration
   // 1. Get Integration
-  let integration;
+  let integration:any
   if (params && params.authId) {
       integration = await getIntegrationById(params.authId);
   } else {
@@ -112,7 +112,7 @@ export async function runAction({ userId, service, actionName, params }: RunActi
         }
     } else {
       // 2. Prepare Google OAuth2 Auth
-      const client = createOAuthClient();
+      const client = createOAuthClient(`/auth/callback/${service}`);
       client.setCredentials({
         refresh_token: integration.refresh_token,
         access_token: integration.access_token,
@@ -153,10 +153,38 @@ export async function runAction({ userId, service, actionName, params }: RunActi
     }
   }
 
-  // 4. Run Action with detailed error wrapping
+  // 4. Run Action with detailed error wrapping and Retry on 401
   try {
     return await action({ auth, params });
   } catch (error: any) {
+    const isGoogleAuth = integration && !['github', 'microsoft'].includes(service);
+    const is401 = error.code === 401 || error.response?.status === 401 || error.message?.includes('invalid authentication credentials');
+
+    if (is401 && isGoogleAuth) {
+        console.log(`[Engine] 🔄 Got 401/Unauthorized for ${service}. Attempting forced refresh and retry...`);
+        try {
+            const client = auth as any;
+            const { credentials } = await client.refreshAccessToken();
+            
+            await saveIntegration({
+                id: integration.id,
+                user_id: userId,
+                service,
+                refresh_token: integration!.refresh_token,
+                access_token: credentials.access_token ?? undefined,
+                expiry_date: credentials.expiry_date ?? undefined,
+                scopes: integration!.scopes
+            });
+
+            client.setCredentials(credentials);
+            console.log(`[Engine] ✅ Token refreshed for ${service}. Retrying action...`);
+            return await action({ auth: client, params });
+        } catch (refreshError: any) {
+            console.error(`[Engine] ❌ Forced refresh failed for ${service}:`, refreshError.message);
+            // Fall through to original error
+        }
+    }
+
     if (error.response?.data?.error === 'invalid_grant') {
         console.error(`[Engine] ❌ CRITICAL AUTH ERROR: Refresh Token Revoked/Invalid for ${service}. User must reconnect.`);
     }
@@ -219,7 +247,7 @@ export async function runTrigger({ userId, service, triggerName, lastProcessedId
         }
     } else {
         // 2. Prepare Auth
-        const client = createOAuthClient();
+        const client = createOAuthClient(`/auth/callback/${service}`);
         client.setCredentials({
             refresh_token: integration.refresh_token,
             access_token: integration.access_token,
@@ -245,6 +273,33 @@ export async function runTrigger({ userId, service, triggerName, lastProcessedId
     }
   }
 
-  // 4. Run Trigger
-  return await trigger({ auth, lastProcessedId, params, epoch });
+  // 4. Run Trigger with Retry on 401
+  try {
+    return await trigger({ auth, lastProcessedId, params, epoch });
+  } catch (error: any) {
+    const isGoogleAuth = integration && !['github', 'microsoft'].includes(service);
+    const is401 = error.code === 401 || error.response?.status === 401 || error.message?.includes('invalid authentication credentials');
+
+    if (is401 && isGoogleAuth) {
+        console.log(`[Engine] 🔄 Got 401 for trigger ${service}.${triggerName}. Attempting forced refresh...`);
+        try {
+            const client = auth as any;
+            const { credentials } = await client.refreshAccessToken();
+            await saveIntegration({
+                id: integration!.id,
+                user_id: userId,
+                service,
+                refresh_token: integration!.refresh_token,
+                access_token: credentials.access_token ?? undefined,
+                expiry_date: credentials.expiry_date ?? undefined,
+                scopes: integration!.scopes
+            });
+            client.setCredentials(credentials);
+            return await trigger({ auth: client, lastProcessedId, params, epoch });
+        } catch (refreshErr: any) {
+             console.error(`[Engine] Trigger forced refresh failed:`, refreshErr.message);
+        }
+    }
+    throw error;
+  }
 }

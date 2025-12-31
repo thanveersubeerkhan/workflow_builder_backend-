@@ -185,8 +185,11 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
       
       try {
         if (!step.type || step.type === 'action') {
-            console.log(`[Executor] Resolving variables for action "${step.name}". Context keys: ${Object.keys(context.steps || {}).join(', ')}`);
+            console.log(`[Executor] Resolving variables for action "${step.name}". Context keys: ${Object.keys(context.steps || {}).join(', ')}, trigger`);
+            console.log(`[Executor] Full context.steps:`, JSON.stringify(context.steps, null, 2));
+            console.log(`[Executor] Step params before resolution:`, JSON.stringify(step.params, null, 2));
             const resolvedParams = resolveVariables(step.params, context);
+            console.log(`[Executor] Step params after resolution:`, JSON.stringify(resolvedParams, null, 2));
             const result = await runAction({
               userId,
               service: step.piece!,

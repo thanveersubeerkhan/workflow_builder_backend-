@@ -16,21 +16,18 @@ export const SERVICE_SCOPES: Record<string, string[]> = {
   ],
   drive: [
     'https://www.googleapis.com/auth/drive.file',
-    'https://www.googleapis.com/auth/drive.readonly'
+    'https://www.googleapis.com/auth/drive.readonly',
+    'https://www.googleapis.com/auth/drive.metadata.readonly'
   ],
   sheets: [
     'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/spreadsheets.readonly',
     'https://www.googleapis.com/auth/drive.readonly',
-    'https://www.googleapis.com/auth/drive.metadata.readonly',
-    'https://www.googleapis.com/auth/drive.file'
+    'https://www.googleapis.com/auth/drive.metadata.readonly'
   ],
   docs: [
     'https://www.googleapis.com/auth/documents',
-    'https://www.googleapis.com/auth/documents.readonly',
     'https://www.googleapis.com/auth/drive.readonly',
-    'https://www.googleapis.com/auth/drive.metadata.readonly',
-    'https://www.googleapis.com/auth/drive.file'
+    'https://www.googleapis.com/auth/drive.metadata.readonly'
   ]
 };
 

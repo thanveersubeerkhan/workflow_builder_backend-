@@ -4,7 +4,7 @@ import { pool } from './db.js';
 async function checkLocks() {
     try {
         console.log('[LockDebug] checkLocks started');
-        const res = await pool.query(`
+        const res :any= await pool.query(`
             SELECT pid, mode, granted, locktype, objid 
             FROM pg_locks 
             WHERE locktype = 'advisory'
@@ -14,7 +14,7 @@ async function checkLocks() {
 
         if (res.rowCount > 0) {
             console.log('[LockDebug] Attempting to identify sessions...');
-            const pids = res.rows.map(r => r.pid).join(',');
+            const pids = res.rows.map((r:any) => r.pid).join(',');
             const sessions = await pool.query(`SELECT pid, usename, application_name, state, query_start FROM pg_stat_activity WHERE pid IN (${pids})`);
             console.table(sessions.rows);
         }

@@ -17,8 +17,10 @@ export const excelPiece: Piece = {
       
       const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
       
+      const encName = encodeURIComponent(name);
+      
       const res = await axios.put(
-        `https://graph.microsoft.com/v1.0/me/drive/items/${folderId}:/${name}:/content`,
+        `https://graph.microsoft.com/v1.0/me/drive/items/${folderId}:/${encName}:/content`,
         buffer,
         {
           headers: {
@@ -35,8 +37,10 @@ export const excelPiece: Piece = {
         const { fileId, name } = params;
         const accessToken = typeof auth === 'string' ? auth : (await auth.getAccessToken()).token;
   
+        const cleanId = fileId ? fileId.split('&')[0] : fileId; 
+        
         const res = await axios.post(
-          `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/worksheets`,
+          `https://graph.microsoft.com/v1.0/me/drive/items/${cleanId}/workbook/worksheets`,
           { name },
           {
             headers: {
@@ -53,9 +57,11 @@ export const excelPiece: Piece = {
         const { fileId, address, hasHeaders, name } = params;
         const accessToken = typeof auth === 'string' ? auth : (await auth.getAccessToken()).token;
   
+        const cleanId = fileId ? fileId.split('&')[0] : fileId; 
+        
         // POST /workbook/tables/add
         const res = await axios.post(
-          `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/tables/add`,
+          `https://graph.microsoft.com/v1.0/me/drive/items/${cleanId}/workbook/tables/add`,
           { address, hasHeaders },
           {
             headers: {
@@ -68,7 +74,7 @@ export const excelPiece: Piece = {
         // Optionally rename if name provided
         if (name && res.data.id) {
              await axios.patch(
-                `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/tables/${res.data.id}`,
+                `https://graph.microsoft.com/v1.0/me/drive/items/${cleanId}/workbook/tables/${res.data.id}`,
                 { name },
                 {
                     headers: {
@@ -91,9 +97,12 @@ export const excelPiece: Piece = {
 
       // Ensure values is an array of arrays
       const rowValues = Array.isArray(values) ? (Array.isArray(values[0]) ? values : [values]) : [[values]];
+      
+      const cleanId = fileId ? fileId.split('&')[0] : fileId; 
+      const encTable = encodeURIComponent(tableName);
 
       const res = await axios.post(
-        `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/tables/${tableName}/rows/add`,
+        `https://graph.microsoft.com/v1.0/me/drive/items/${cleanId}/workbook/tables/${encTable}/rows/add`,
         {
           values: rowValues
         },
@@ -112,24 +121,42 @@ export const excelPiece: Piece = {
       const { fileId, sheetName, range } = params;
       const accessToken = typeof auth === 'string' ? auth : (await auth.getAccessToken()).token;
 
-      const res = await axios.get(
-        `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/worksheets/${sheetName}/range(address='${range}')`,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`
-          }
-        }
-      );
+      // Clean ID and encode components
+      const cleanId = fileId ? fileId.split('&')[0] : fileId; 
+      const encSheet = encodeURIComponent(sheetName);
+      const encRange = encodeURIComponent(range);
 
-      return res.data;
+      try {
+        const res = await axios.get(
+          `https://graph.microsoft.com/v1.0/me/drive/items/${cleanId}/workbook/worksheets/${encSheet}/range(address='${encRange}')`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`
+            }
+          }
+        );
+        return res.data;
+      } catch (error: any) {
+        if (error.response?.status === 404) {
+          throw new Error(`Resource not found. Please check:
+1. File ID: '${fileId}' (cleaned: '${cleanId}') - Does this file exist?
+2. Sheet Name: '${sheetName}' - Does this sheet exist in the workbook?
+3. Range: '${range}' - Is this a valid Excel range (e.g., 'A1', '1:1')?`);
+        }
+        throw error;
+      }
     },
 
     updateRange: async ({ auth, params }) => {
       const { fileId, sheetName, range, values } = params;
       const accessToken = typeof auth === 'string' ? auth : (await auth.getAccessToken()).token;
 
+      const cleanId = fileId ? fileId.split('&')[0] : fileId;
+      const encSheet = encodeURIComponent(sheetName);
+      const encRange = encodeURIComponent(range);
+
       const res = await axios.patch(
-        `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/worksheets/${sheetName}/range(address='${range}')`,
+        `https://graph.microsoft.com/v1.0/me/drive/items/${cleanId}/workbook/worksheets/${encSheet}/range(address='${encRange}')`,
         {
           values: Array.isArray(values[0]) ? values : [values]
         },

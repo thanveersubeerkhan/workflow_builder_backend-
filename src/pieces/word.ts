@@ -8,8 +8,10 @@ export const wordPiece: Piece = {
       const { fileId } = params;
       const accessToken = typeof auth === 'string' ? auth : (await auth.getAccessToken()).token;
       
+      const cleanId = fileId ? fileId.split('&')[0] : fileId;
+
       const res = await axios.get(
-        `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/content`,
+        `https://graph.microsoft.com/v1.0/me/drive/items/${cleanId}/content`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`
@@ -24,9 +26,11 @@ export const wordPiece: Piece = {
     updateContent: async ({ auth, params }) => {
       const { fileId, content } = params;
       const accessToken = typeof auth === 'string' ? auth : (await auth.getAccessToken()).token;
+      
+      const cleanId = fileId ? fileId.split('&')[0] : fileId;
 
       const res = await axios.put(
-        `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/content`,
+        `https://graph.microsoft.com/v1.0/me/drive/items/${cleanId}/content`,
         content,
         {
           headers: {
@@ -42,10 +46,12 @@ export const wordPiece: Piece = {
     createDocument: async ({ auth, params }) => {
       const { name, driveId, folderId = 'root', content = '' } = params;
       const accessToken = typeof auth === 'string' ? auth : (await auth.getAccessToken()).token;
+      
+      const encName = encodeURIComponent(name);
 
-      let url = `https://graph.microsoft.com/v1.0/me/drive/items/${folderId}:/${name}:/content`;
+      let url = `https://graph.microsoft.com/v1.0/me/drive/items/${folderId}:/${encName}:/content`;
       if (driveId) {
-        url = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${folderId}:/${name}:/content`;
+        url = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${folderId}:/${encName}:/content`;
       }
 
       const res = await axios.put(

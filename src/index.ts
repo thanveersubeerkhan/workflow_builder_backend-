@@ -248,6 +248,52 @@ app.post('/api/flows/:flowId/run', async (req, res) => {
   }
 });
 
+// Retry a failed flow from the failed step
+app.post('/api/flows/retry/:runId', async (req: express.Request, res: express.Response) => {
+  const { runId } = req.params;
+  
+  try {
+    // Get the failed run
+    const runRes = await pool.query('SELECT * FROM flow_runs WHERE id = $1', [runId]);
+    if (runRes.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Run not found' });
+    }
+    
+    const run = runRes.rows[0];
+    
+    if (run.status !== 'failed') {
+      return res.status(400).json({ success: false, error: 'Run is not in failed status' });
+    }
+    
+    // Get the flow definition
+    const flowRes = await pool.query('SELECT definition FROM flows WHERE id = $1', [run.flow_id]);
+    if (flowRes.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Flow not found' });
+    }
+    
+    console.log(`[Retry] 🔄 Retrying failed run: ${runId} from step index: ${run.last_step_index}`);
+    
+    // Reset status to running so it can be retried
+    await pool.query('UPDATE flow_runs SET status = $1 WHERE id = $2', ['running', runId]);
+    
+    // Resume execution from the failed step
+    executeFlow({
+      runId: runId,
+      flowId: run.flow_id,
+      userId: run.user_id,
+      definition: flowRes.rows[0].definition
+    }).catch(err => {
+      console.error(`[Retry] ❌ Retry failed for run ${runId}:`, err.message);
+    });
+    
+    res.json({ success: true, message: 'Flow retry initiated', runId });
+    
+  } catch (error: any) {
+    console.error('Retry error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.post('/api/runs/:runId/retry', async (req, res) => {
   const { runId } = req.params;
   try {
@@ -296,8 +342,59 @@ app.all('/api/test-http', (req, res) => {
 
 app.get('/health', (req, res) => res.send('OK'));
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 API Server running on port ${PORT}`);
+  
+  // Resume interrupted flows from server restart
+  try {
+    // 1. Resume RUNNING flows (server crashed mid-execution)
+    const runningFlows = await pool.query(
+      "SELECT id, flow_id, user_id FROM flow_runs WHERE status = 'running' OR status = 'pending'"
+    );
+    
+    if (runningFlows.rows.length > 0) {
+      console.log(`[Recovery] 🔄 Found ${runningFlows.rows.length} interrupted running flow(s). Resuming...`);
+      
+      for (const run of runningFlows.rows) {
+        try {
+          const flowRes = await pool.query('SELECT definition FROM flows WHERE id = $1', [run.flow_id]);
+          if (flowRes.rows.length > 0) {
+            console.log(`[Recovery] ▶️ Resuming running flow: ${run.id}`);
+            
+            executeFlow({
+              runId: run.id,
+              flowId: run.flow_id,
+              userId: run.user_id,
+              definition: flowRes.rows[0].definition
+            }).catch(err => {
+              console.error(`[Recovery] ❌ Failed to resume run ${run.id}:`, err.message);
+            });
+          }
+        } catch (err: any) {
+          console.error(`[Recovery] ❌ Error resuming run ${run.id}:`, err.message);
+        }
+      }
+    }
+    
+    // 2. WAITING flows are left as-is (they need user approval to continue)
+    const waitingFlows = await pool.query(
+      "SELECT id FROM flow_runs WHERE status = 'waiting'"
+    );
+    if (waitingFlows.rows.length > 0) {
+      console.log(`[Recovery] ⏸️ Found ${waitingFlows.rows.length} waiting flow(s) (paused for approval)`);
+    }
+    
+    // 3. FAILED flows are left as-is (they need manual retry)
+    const failedFlows = await pool.query(
+      "SELECT id FROM flow_runs WHERE status = 'failed'"
+    );
+    if (failedFlows.rows.length > 0) {
+      console.log(`[Recovery] ❌ Found ${failedFlows.rows.length} failed flow(s) (ready for retry)`);
+    }
+    
+  } catch (err: any) {
+    console.error('[Recovery] ❌ Startup recovery failed:', err.message);
+  }
 });
 
 const shutdown = async (signal: string) => {

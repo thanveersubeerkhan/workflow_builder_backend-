@@ -18,9 +18,11 @@ export const onedrivePiece: Piece = {
     uploadFile: async ({ auth, params }) => {
       const { folderId = 'root', fileName, content, contentType = 'text/plain' } = params;
       const accessToken = typeof auth === 'string' ? auth : (await auth.getAccessToken()).token;
+      
+      const encFileName = encodeURIComponent(fileName);
 
       const res = await axios.put(
-        `https://graph.microsoft.com/v1.0/me/drive/items/${folderId}:/${fileName}:/content`,
+        `https://graph.microsoft.com/v1.0/me/drive/items/${folderId}:/${encFileName}:/content`,
         content,
         {
           headers: {
@@ -37,7 +39,9 @@ export const onedrivePiece: Piece = {
       const { fileId } = params;
       const accessToken = typeof auth === 'string' ? auth : (await auth.getAccessToken()).token;
 
-      const res = await axios.get(`https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/content`, {
+      const cleanId = fileId ? fileId.split('&')[0] : fileId;
+
+      const res = await axios.get(`https://graph.microsoft.com/v1.0/me/drive/items/${cleanId}/content`, {
         headers: { Authorization: `Bearer ${accessToken}` },
         responseType: 'arraybuffer'
       });
@@ -53,8 +57,10 @@ export const onedrivePiece: Piece = {
     deleteFile: async ({ auth, params }) => {
       const { fileId } = params;
       const accessToken = typeof auth === 'string' ? auth : (await auth.getAccessToken()).token;
+      
+      const cleanId = fileId ? fileId.split('&')[0] : fileId;
 
-      await axios.delete(`https://graph.microsoft.com/v1.0/me/drive/items/${fileId}`, {
+      await axios.delete(`https://graph.microsoft.com/v1.0/me/drive/items/${cleanId}`, {
         headers: { Authorization: `Bearer ${accessToken}` }
       });
 

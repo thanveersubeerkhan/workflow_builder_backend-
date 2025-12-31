@@ -7,19 +7,25 @@ export const drivePiece: Piece = {
     listFiles: async ({ auth, params }) => {
       const drive = google.drive({ version: 'v3', auth });
       const res = await drive.files.list({
-        pageSize: params.pageSize || 10,
-        fields: 'nextPageToken, files(id, name, mimeType)',
+        pageSize: params.pageSize || 10
       });
       return res.data.files;
     },
 
     createFolder: async ({ auth, params }) => {
       const drive = google.drive({ version: 'v3', auth });
+      const requestBody: any = {
+        name: params.name,
+        mimeType: 'application/vnd.google-apps.folder',
+      };
+      
+      // Add parent folder if specified
+      if (params.parent) {
+        requestBody.parents = [params.parent];
+      }
+      
       const res = await drive.files.create({
-        requestBody: {
-          name: params.name,
-          mimeType: 'application/vnd.google-apps.folder',
-        },
+        requestBody,
       });
       return res.data;
     },
@@ -27,8 +33,7 @@ export const drivePiece: Piece = {
     listFolders: async ({ auth }) => {
       const drive = google.drive({ version: 'v3', auth });
       const res = await drive.files.list({
-        q: "mimeType='application/vnd.google-apps.folder' and trashed=false",
-        fields: 'files(id, name)',
+        q: "mimeType='application/vnd.google-apps.folder' and trashed=false"
       });
       return { 
         folders: res.data.files?.map(f => ({

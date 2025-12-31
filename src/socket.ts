@@ -76,6 +76,7 @@ io.on('connection', (socket) => {
       }
       
       const newlyActivated = (is_active === true || is_active === 'true') && !wasActive;
+      const newlyDeactivated = (is_active === false || is_active === 'false') && wasActive;
 
       if (is_active !== undefined) {
         updates.push(`is_active = $${paramIdx++}`);
@@ -86,6 +87,15 @@ io.on('connection', (socket) => {
         if (newlyActivated) {
           updates.push(`next_run_time = $${paramIdx++}`);
           values.push(Date.now());
+        }
+        
+        // If deactivating, clear the lease AND last_trigger_data to allow immediate re-activation
+        if (newlyDeactivated) {
+          updates.push(`locked_until = $${paramIdx++}`);
+          values.push(null);
+          updates.push(`last_trigger_data = $${paramIdx++}`);
+          values.push(null);
+          console.log(`[Socket] 🔓 Clearing lease and trigger history for deactivated flow: ${flowId}`);
         }
       }
 

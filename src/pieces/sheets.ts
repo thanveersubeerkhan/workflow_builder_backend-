@@ -71,7 +71,16 @@ export const sheetsPiece: Piece = {
         },
       });
 
-      return res.data;
+      // Return useful data instead of raw API response
+      const output = {
+        spreadsheetId,
+        range: res.data.updates?.updatedRange || range,
+        values: row,
+        updatedCells: res.data.updates?.updatedCells || row.length,
+        updatedRows: res.data.updates?.updatedRows || 1
+      };
+      console.log('[Sheets] appendRowSmart output:', JSON.stringify(output));
+      return output;
     },
 
     getValues: async ({ auth, params }) => {
@@ -83,7 +92,13 @@ export const sheetsPiece: Piece = {
         range,
       });
 
-      return res.data.values;
+      // Return consistent structure with values property
+      return {
+        spreadsheetId,
+        range: res.data.range || range,
+        values: res.data.values || [],
+        majorDimension: res.data.majorDimension || 'ROWS'
+      };
     },
 
     createSpreadsheet: async ({ auth, params }) => {
