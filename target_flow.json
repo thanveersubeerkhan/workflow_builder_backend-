@@ -1,0 +1,228 @@
+{
+  "edges": [
+    {
+      "id": "e-1-05taoa65t",
+      "type": "custom",
+      "source": "1",
+      "target": "05taoa65t"
+    },
+    {
+      "id": "e-05taoa65t-6e0x71hp8",
+      "type": "custom",
+      "source": "05taoa65t",
+      "target": "6e0x71hp8",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "e-05taoa65t-lqwsjnna4",
+      "type": "custom",
+      "source": "05taoa65t",
+      "target": "lqwsjnna4",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "e-lqwsjnna4-ta4jbrzd0",
+      "type": "custom",
+      "source": "lqwsjnna4",
+      "target": "ta4jbrzd0"
+    },
+    {
+      "id": "e-ta4jbrzd0-end",
+      "type": "custom",
+      "source": "ta4jbrzd0",
+      "target": "end"
+    },
+    {
+      "id": "e-6e0x71hp8-ta4jbrzd0",
+      "type": "custom",
+      "source": "6e0x71hp8",
+      "target": "ta4jbrzd0",
+      "sourceHandle": null
+    }
+  ],
+  "nodes": [
+    {
+      "id": "1",
+      "data": {
+        "icon": "schedule",
+        "name": "Schedule_schedule",
+        "label": "Schedule_schedule",
+        "piece": "schedule",
+        "action": "schedule",
+        "params": {
+          "intervalType": "minutes",
+          "intervalMinutes": "1"
+        },
+        "appName": "Schedule",
+        "actionId": "schedule",
+        "subLabel": "Standard polling trigger based on intervals.",
+        "actionName": "Schedule",
+        "description": "Standard polling trigger based on intervals.",
+        "isPlaceholder": false
+      },
+      "type": "custom",
+      "measured": {
+        "width": 280,
+        "height": 82
+      },
+      "position": {
+        "x": 210,
+        "y": 0
+      },
+      "selected": false,
+      "sourcePosition": "bottom",
+      "targetPosition": "top"
+    },
+    {
+      "id": "end",
+      "data": {
+        "label": "End"
+      },
+      "type": "end",
+      "measured": {
+        "width": 60,
+        "height": 38
+      },
+      "position": {
+        "x": 210,
+        "y": 800
+      },
+      "sourcePosition": "bottom",
+      "targetPosition": "top"
+    },
+    {
+      "id": "05taoa65t",
+      "data": {
+        "icon": "logic",
+        "name": "Logic_condition",
+        "label": "Logic_condition",
+        "piece": "logic",
+        "action": "condition",
+        "params": {
+          "condition": "true"
+        },
+        "appName": "Logic",
+        "actionId": "condition",
+        "subLabel": "Branch the flow based on a condition.",
+        "actionName": "Condition",
+        "description": "Branch the flow based on a condition.",
+        "isPlaceholder": false
+      },
+      "type": "condition",
+      "measured": {
+        "width": 280,
+        "height": 80
+      },
+      "position": {
+        "x": 210,
+        "y": 200
+      },
+      "selected": false,
+      "sourcePosition": "bottom",
+      "targetPosition": "top"
+    },
+    {
+      "id": "6e0x71hp8",
+      "data": {
+        "icon": "gmail",
+        "name": "Gmail_sendEmail",
+        "label": "Gmail_sendEmail",
+        "piece": "gmail",
+        "action": "sendEmail",
+        "params": {
+          "to": "thanveer21cs52@gmail.com",
+          "body": "true excuted",
+          "subject": "true  {{steps.trigger.data.firedAt}}",
+          "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+        },
+        "appName": "Gmail",
+        "actionId": "sendEmail",
+        "subLabel": "Sends a new email.",
+        "actionName": "Send Email",
+        "description": "Sends a new email.",
+        "isPlaceholder": false
+      },
+      "type": "custom",
+      "dragging": false,
+      "measured": {
+        "width": 280,
+        "height": 82
+      },
+      "position": {
+        "x": 45,
+        "y": 400
+      },
+      "selected": false,
+      "sourcePosition": "bottom",
+      "targetPosition": "top"
+    },
+    {
+      "id": "lqwsjnna4",
+      "data": {
+        "icon": "gmail",
+        "name": "Gmail_sendEmail",
+        "label": "Gmail_sendEmail",
+        "piece": "gmail",
+        "action": "sendEmail",
+        "params": {
+          "to": "thanveer21cs52@gmail.com",
+          "body": "false excuted",
+          "subject": "false {{steps.trigger.data.firedAt}}",
+          "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+        },
+        "appName": "Gmail",
+        "actionId": "sendEmail",
+        "subLabel": "Sends a new email.",
+        "actionName": "Send Email",
+        "description": "Sends a new email.",
+        "isPlaceholder": false
+      },
+      "type": "custom",
+      "measured": {
+        "width": 280,
+        "height": 82
+      },
+      "position": {
+        "x": 375,
+        "y": 400
+      },
+      "selected": false,
+      "sourcePosition": "bottom",
+      "targetPosition": "top"
+    },
+    {
+      "id": "ta4jbrzd0",
+      "data": {
+        "icon": "gmail",
+        "name": "Gmail_sendEmail",
+        "label": "Gmail_sendEmail",
+        "piece": "gmail",
+        "action": "sendEmail",
+        "params": {
+          "to": "thanveer21cs52@gmail.com",
+          "body": "completed",
+          "subject": "compled",
+          "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+        },
+        "appName": "Gmail",
+        "actionId": "sendEmail",
+        "subLabel": "Sends a new email.",
+        "actionName": "Send Email",
+        "description": "Sends a new email.",
+        "isPlaceholder": false
+      },
+      "type": "custom",
+      "measured": {
+        "width": 280,
+        "height": 82
+      },
+      "position": {
+        "x": 210,
+        "y": 600
+      },
+      "selected": false,
+      "sourcePosition": "bottom",
+      "targetPosition": "top"
+    }
+  ]
+}

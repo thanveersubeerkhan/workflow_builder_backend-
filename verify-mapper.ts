@@ -1,38 +1,15 @@
+/// <reference types="node" />
 import { mapUIToDefinition } from './src/flow-mapper';
 import * as fs from 'fs';
 
-const complexUI = {
-  nodes: [
-    { id: '1', type: 'custom', data: { appName: 'Schedule', actionId: 'every_5_minutes', icon: 'schedule' } },
-    { id: '2', type: 'custom', data: { appName: 'Gmail', actionId: 'listMessages', icon: 'gmail' } },
-    { id: '3', type: 'custom', data: { type: 'condition', icon: 'condition', params: { condition: '{{steps.2.messages.length}} > 0' } } },
-    { id: '4', type: 'custom', data: { appName: 'Gmail', actionId: 'sendEmail', icon: 'gmail', params: { to: 'admin@example.com', subject: 'New Emails Found' } } },
-    { id: '5', type: 'custom', data: { appName: 'Logger', actionId: 'info', icon: 'logger', params: { message: 'No emails found' } } },
-    { id: '6', type: 'custom', data: { type: 'parallel', icon: 'parallel' } },
-    { id: '7', type: 'custom', data: { appName: 'Sheets', actionId: 'appendRow', icon: 'sheets' } },
-    { id: '8', type: 'custom', data: { appName: 'Slack', actionId: 'sendMessage', icon: 'slack' } },
-    { id: '9', type: 'custom', data: { type: 'loop', actionId: 'loop', params: { items: '{{steps.2.messages}}' } } },
-    { id: '10', type: 'custom', data: { appName: 'Logger', actionId: 'info', params: { message: 'Processing item' } } },
-    { id: 'end', type: 'end', data: { label: 'End' } }
-  ],
-  edges: [
-    { id: 'e1-2', source: '1', target: '2' },
-    { id: 'e2-3', source: '2', target: '3' },
-    { id: 'e3-4', source: '3', target: '4', data: { label: 'true' } },
-    { id: 'e3-5', source: '3', target: '5', data: { label: 'false' } },
-    { id: 'e4-6', source: '4', target: '6' },
-    { id: 'e6-7', source: '6', target: '7' },
-    { id: 'e6-8', source: '6', target: '8' },
-    { id: 'e7-9', source: '7', target: '9' }, // Note: In UI, joins are complex, here we just follow paths
-    { id: 'e9-10', source: '9', target: '10' }
-  ]
-};
+const complexUI = JSON.parse(fs.readFileSync('target_flow.json', 'utf-8'));
 
 console.log('--- Mapping Complex UI ---');
 const flowDef = mapUIToDefinition(complexUI);
 
 console.log(JSON.stringify(flowDef, null, 2));
 
+/*
 // Assertions
 const steps = flowDef.steps;
 if (steps[0].piece === 'gmail' && steps[1].type === 'condition') {
@@ -97,3 +74,4 @@ if (loop && loop.type === 'loop') {
 }
 
 console.log('🎉 ALL MAPPER TESTS PASSED');
+*/

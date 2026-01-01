@@ -9,10 +9,10 @@ const pool = new Pool({
 
 async function extractComplexFlow() {
   try {
-    const res = await pool.query('SELECT ui_definition FROM flows WHERE ui_definition->\'nodes\' IS NOT NULL AND jsonb_array_length(ui_definition->\'nodes\') > 2 LIMIT 1;');
+    const res = await pool.query("SELECT ui_definition FROM flows WHERE id = 'b6fa456b-fef4-4f84-a10b-ab3651597aa1'");
     if (res.rows.length > 0) {
-      fs.writeFileSync('complex_flow.json', JSON.stringify(res.rows[0].ui_definition, null, 2));
-      console.log('Extracted complex_flow.json');
+      fs.writeFileSync('target_flow.json', JSON.stringify(res.rows[0].ui_definition, null, 2));
+      console.log('Extracted target_flow.json');
     } else {
       console.log('No complex flows found.');
     }
