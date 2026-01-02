@@ -99,34 +99,28 @@ export function mapUIToDefinition(ui: UIDefinition) {
       return roots[0];
   }
 
-  function traverse(startNodeId: string, stopNodeId?: string): any[] {
+  function traverseChain(startNodeId: string, stopNodeId?: string): any[] {
     const steps: any[] = [];
-    let currentId = startNodeId;
+    let currentId: string | undefined = startNodeId;
 
-    while (true) {
-        if (currentId === stopNodeId) break;
-
-        const outbound = getOutbound(currentId);
-        if (outbound.length === 0) break;
-
-        // Peak at the next node
-        const { node, edge } = outbound[0];
-        if (visited.has(node.id)) break;
-        if (node.id === stopNodeId) break;
+    while (currentId && currentId !== stopNodeId) {
+        if (visited.has(currentId)) break;
         
-        // Is the NEXT node a branching node?
-        const isCondition = node.data?.icon === 'condition' || node.type === 'condition' || node.data?.type === 'condition' || getOutbound(node.id).some(o => o.edge.data?.label === 'true' || o.edge.data?.label === 'false' || o.edge.sourceHandle === 'true' || o.edge.sourceHandle === 'false');
-        const nextOutbound = getOutbound(node.id);
-        const isParallel = !isCondition && nextOutbound.length > 1;
-        const isLoop = node.data?.type === 'loop' || node.data?.actionId === 'loop';
-        const isWait = node.data?.type === 'wait' || node.data?.icon === 'pause' || node.data?.actionId === 'wait';
+        const node = nodes.find(n => n.id === currentId);
+        if (!node || node.type === 'end') break;
 
-        visited.add(node.id);
+        visited.add(currentId);
+
+        // --- MAP NODE ---
+        const outbound = getOutbound(currentId);
+        
+        // 1. Condition Node
+        const isCondition = node.data?.icon === 'condition' || node.type === 'condition' || node.data?.type === 'condition' || 
+                            outbound.some(o => o.edge.data?.label === 'true' || o.edge.data?.label === 'false' || (o.edge as any).sourceHandle === 'true' || (o.edge as any).sourceHandle === 'false');
 
         if (isCondition) {
-            const conditionOutbound = getOutbound(node.id);
-            const trueNode = conditionOutbound.find(o => o.edge.data?.label === 'true' || o.edge.sourceHandle === 'true')?.node;
-            const falseNode = conditionOutbound.find(o => o.edge.data?.label === 'false' || o.edge.sourceHandle === 'false')?.node;
+            const trueNode = outbound.find(o => o.edge.data?.label === 'true' || (o.edge as any).sourceHandle === 'true')?.node;
+            const falseNode = outbound.find(o => o.edge.data?.label === 'false' || (o.edge as any).sourceHandle === 'false')?.node;
             
             let joinNodeId: string | undefined = undefined;
             if (trueNode && falseNode) {
@@ -137,104 +131,57 @@ export function mapUIToDefinition(ui: UIDefinition) {
                 name: node.id,
                 type: 'condition',
                 condition: node.data?.params?.condition || 'false',
-                onTrue: trueNode ? traverseBranch(trueNode.id, joinNodeId) : [],
-                onFalse: falseNode ? traverseBranch(falseNode.id, joinNodeId) : []
+                onTrue: trueNode ? traverseChain(trueNode.id, joinNodeId) : [],
+                onFalse: falseNode ? traverseChain(falseNode.id, joinNodeId) : []
             });
-            
-            if (joinNodeId) {
-                // Continue traversal from join node
-                // We need to mark joinNode as NOT visited so it can be processed? 
-                // Wait, traverse loop checks visited. We need to ensure logic flow continues.
-                // We set currentId to joinNode's parent? No.
-                // We want to process joinNode NEXT.
-                // But the loop works by looking at OUTBOUND of currentId.
-                // JoinNode is NOT outbound of ConditionNode directly (it's deeper).
-                // So we can't simple set currentId = joinNode.
-                
-                // We need to RESTART the loop or JUMP to joinNode.
-                // But `getOutbound(currentId)` expects `currentId` to be the "previous" node.
-                // If we set `currentId = joinNodeId`? No, loop expects `currentId` to be the source of edge to next node.
-                
-                // We want to process `joinNode` as if it was the next node.
-                // But `joinNode` might have multiple parents.
-                // The structure of `steps` is flat.
-                // We can just call `traverse(joinNodeId)` and append?
-                // But we are INSIDE `traverse`.
-                
-                // We can't easily jump.
-                // Hack: Recursively call traverse and append, then break.
-                // steps.push(...traverse(joinNodeId));
-                // break;
-                
-                // However, `traverse` marks `visited`.
-                // `joinNode` is supposedly NOT visited yet (because stopped at `joinNodeId`).
-                // But we need to handle the fact that we are "jumping" in the graph.
-                
-                // Wait, if we use `traverse(joinNodeId)`, `traverse` starts by looking for OUTBOUND of `joinNodeId`.
-                // It SKIPS `joinNodeId` itself!
-                // `traverse` logic: `outbound = getOutbound(currentId)`. `node = outbound[0]`.
-                // It processes the CHILD of `currentId`.
-                
-                // So if we pass `joinNodeId`, it processes children of `joinNodeId`. 
-                // It MISSES `joinNodeId` itself as a step.
-                
-                // We need to process `joinNodeId` itself.
-                // Logic for processing a node is in `traverseBranch` mainly (creating the step object).
-                // Or here in the loop (creating the step object).
-                
-                // We can treat `joinNodeId` as the next `currentId` but we need to process it first.
-                // But the Loop logic is: 
-                // 1. Get children of currentId.
-                // 2. Process child (create step).
-                // 3. Set currentId = child.
-                
-                // If we have a Join Node, we want to set `currentId` such that `joinNode` is the child?
-                // No, `joinNode` comes from multiple parents.
-                
-                // We should explicitly Process `joinNode` here, add it to steps, and then set `currentId = joinNodeId`.
-                // But `joinNode` processing logic (identifying type, etc) is inside the loop.
-                
-                // Refactor idea:
-                // Extract `processNode(node)` logic.
-                
-                // Better:
-                // Just use `visited` logic.
-                // If `joinNode` exists. 
-                // We remove it from `visited`? No.
-                
-                // We can simply call `traverseBranch(joinNodeId)`?
-                // `traverseBranch` adds the node step, and then calls `traverse`.
-                
-                steps.push(...traverseBranch(joinNodeId));
-                break;
-            } else {
-                break;
-            }
 
-        } else if (isParallel) {
-             // Parallel logic also needs join detection potentially? 
-             // For now assume parallel joins or ends.
-             // If we want to be consistent, we should use same logic.
-             // But let's stick to Condition for now.
-             
+            // Continue from Join Node if it exists
+            if (joinNodeId) {
+                currentId = joinNodeId;
+                continue;
+            } else {
+                break; // End of this chain
+            }
+        }
+
+        // 2. Parallel Node
+        const isParallel = !isCondition && outbound.length > 1;
+        if (isParallel) {
+            const branchStartNodes = outbound.map(o => o.node);
+            const joinNodeId = findJoinNode(branchStartNodes.map(n => n.id));
+
             steps.push({
                 name: node.id,
                 type: 'parallel',
-                branches: nextOutbound.map(o => traverseBranch(o.node.id)) // Todo: Add stopNode logic here too if needed
+                branches: branchStartNodes.map(n => traverseChain(n.id, joinNodeId))
             });
-            break;
-        } else if (isLoop) {
-            const loopOutbound = getOutbound(node.id);
-            steps.push({
-                name: node.id,
-                type: 'loop',
-                displayName: `${node.data?.appName || 'Loop'}`,
-                params: node.data?.params || {},
-                branches: loopOutbound.length > 0 ? [traverseBranch(loopOutbound[0].node.id)] : []
-            });
-            break;
-        } else if (isWait) {
+
+            if (joinNodeId) {
+                currentId = joinNodeId;
+                continue;
+            } else {
+                break; 
+            }
+        }
+
+        // 3. Loop Node
+        const isLoop = node.data?.type === 'loop' || node.data?.actionId === 'loop';
+        if (isLoop) {
+             const loopOutbound = getOutbound(node.id);
              steps.push({
+                 name: node.id,
+                 type: 'loop',
+                 displayName: `${node.data?.appName || 'Loop'}`,
+                 params: node.data?.params || {},
+                 branches: loopOutbound.length > 0 ? [traverseChain(loopOutbound[0].node.id)] : []
+             });
+             break; // Loop usually ends or has specific exit logic not fully standard yet
+        }
+
+        // 4. Wait Node
+        const isWait = node.data?.type === 'wait' || node.data?.icon === 'pause' || node.data?.actionId === 'wait';
+        if (isWait) {
+            steps.push({
                 name: node.id,
                 type: 'wait',
                 displayName: 'Wait for Human',
@@ -242,46 +189,33 @@ export function mapUIToDefinition(ui: UIDefinition) {
                 action: 'wait',
                 params: node.data?.params || {}
             });
-            currentId = node.id;
-        } else {
-            // Linear Action
-            const stepPiece = mapPieceName(node.data?.icon || node.data?.appName);
-            steps.push({
-                name: node.id,
-                type: 'action',
-                displayName: `${node.data?.appName || 'Step'} ${node.data?.actionId || 'Action'}`,
-                piece: stepPiece,
-                action: mapActionName(stepPiece, node.data?.actionId || 'action'),
-                params: node.data?.params || {}
-            });
-            currentId = node.id;
+            // Continue to next linear node
+            currentId = outbound.length > 0 ? outbound[0].node.id : undefined;
+            continue;
         }
+
+        // 5. Linear Action
+        const stepPiece = mapPieceName(node.data?.icon || node.data?.appName);
+        steps.push({
+            name: node.id,
+            type: 'action',
+            displayName: `${node.data?.appName || 'Step'} ${node.data?.actionId || 'Action'}`,
+            piece: stepPiece,
+            action: mapActionName(stepPiece, node.data?.actionId || 'action'),
+            params: node.data?.params || {}
+        });
+
+        currentId = outbound.length > 0 ? outbound[0].node.id : undefined;
     }
 
     return steps;
   }
 
-  function traverseBranch(nodeId: string, stopNodeId?: string): any[] {
-     if (nodeId === stopNodeId) return [];
-     if (visited.has(nodeId)) return [];
-     visited.add(nodeId);
+  // Start traversal from the node AFTER the trigger
+  const firstOutbound = getOutbound(triggerNode.id);
+  const steps = firstOutbound.length > 0 ? traverseChain(firstOutbound[0].node.id) : [];
 
-     const node = nodes.find(n => n.id === nodeId);
-     if (!node) return [];
-
-     const stepPiece = mapPieceName(node.data?.icon || node.data?.appName);
-     const step: any = {
-         name: node.id,
-         displayName: `${node.data?.appName || 'Step'} ${node.data?.actionId || 'Action'}`,
-         piece: stepPiece,
-         action: mapActionName(stepPiece, node.data?.actionId || 'action'),
-         params: node.data?.params || {}
-     };
-
-     return [step, ...traverse(nodeId, stopNodeId)];
-  }
-
-  return { trigger, steps: traverse(triggerNode.id) };
+  return { trigger, steps };
 }
 
 /**

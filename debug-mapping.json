@@ -1,0 +1,382 @@
+{
+  "ui": [
+    {
+      "id": "1",
+      "type": "custom",
+      "data": {
+        "icon": "schedule",
+        "name": "Schedule_schedule",
+        "label": "Schedule_schedule",
+        "piece": "schedule",
+        "action": "schedule",
+        "params": {
+          "intervalType": "minutes",
+          "intervalMinutes": "1"
+        },
+        "appName": "Schedule",
+        "actionId": "schedule",
+        "subLabel": "Standard polling trigger based on intervals.",
+        "actionName": "Schedule",
+        "description": "Standard polling trigger based on intervals.",
+        "isMergeNode": false,
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "data": {
+        "label": "End",
+        "isMergeNode": false
+      }
+    },
+    {
+      "id": "2o0e63940",
+      "type": "parallel",
+      "data": {
+        "icon": "logic",
+        "name": "Logic_parallel",
+        "label": "Logic_parallel",
+        "piece": "logic",
+        "action": "parallel",
+        "appName": "Logic",
+        "actionId": "parallel",
+        "branches": [
+          "Branch 1",
+          "Branch 2"
+        ],
+        "subLabel": "Execute multiple branches in parallel.",
+        "actionName": "Parallel",
+        "description": "Execute multiple branches in parallel.",
+        "isMergeNode": false,
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "m5lg65k3j",
+      "type": "custom",
+      "data": {
+        "icon": "gmail",
+        "name": "Gmail_sendEmail",
+        "label": "Gmail_sendEmail",
+        "piece": "gmail",
+        "action": "sendEmail",
+        "params": {
+          "to": "thanveer21cs52@gmail.com",
+          "body": "hi everything finished",
+          "subject": "all finished",
+          "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+        },
+        "appName": "Gmail",
+        "actionId": "sendEmail",
+        "subLabel": "Sends a new email.",
+        "actionName": "Send Email",
+        "description": "Sends a new email.",
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "tbb4hyqj1",
+      "type": "condition",
+      "data": {
+        "icon": "logic",
+        "name": "Logic_condition",
+        "label": "Logic_condition",
+        "piece": "logic",
+        "action": "condition",
+        "params": {
+          "condition": "true"
+        },
+        "appName": "Logic",
+        "actionId": "condition",
+        "subLabel": "Branch the flow based on a condition.",
+        "actionName": "Condition",
+        "description": "Branch the flow based on a condition.",
+        "isMergeNode": false,
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "9tr4frst7",
+      "type": "custom",
+      "data": {
+        "icon": "docs",
+        "name": "Google Docs_appendText",
+        "label": "Google Docs_appendText",
+        "piece": "docs",
+        "action": "appendText",
+        "params": {
+          "text": "logic true 1",
+          "connection": "f495d7db-7c61-4d0d-859a-fd7658780eae",
+          "documentId": "19Vv_26AJ2pjFR35xMuma2Jiu53eOEeY9NDj4EGu9Ep0"
+        },
+        "appName": "Google Docs",
+        "actionId": "appendText",
+        "subLabel": "Appends text to an existing document.",
+        "actionName": "Append Text",
+        "description": "Appends text to an existing document.",
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "jgaf9a9tm",
+      "type": "custom",
+      "data": {
+        "icon": "docs",
+        "name": "Google Docs_appendText",
+        "label": "Google Docs_appendText",
+        "piece": "docs",
+        "action": "appendText",
+        "params": {
+          "text": "logic false",
+          "connection": "f495d7db-7c61-4d0d-859a-fd7658780eae",
+          "documentId": "19Vv_26AJ2pjFR35xMuma2Jiu53eOEeY9NDj4EGu9Ep0"
+        },
+        "appName": "Google Docs",
+        "actionId": "appendText",
+        "subLabel": "Appends text to an existing document.",
+        "actionName": "Append Text",
+        "description": "Appends text to an existing document.",
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "gvvxwqsyw",
+      "type": "custom",
+      "data": {
+        "icon": "docs",
+        "name": "Google Docs_appendText",
+        "label": "Google Docs_appendText",
+        "piece": "docs",
+        "action": "appendText",
+        "params": {
+          "text": "logic finished",
+          "connection": "f495d7db-7c61-4d0d-859a-fd7658780eae",
+          "documentId": "19Vv_26AJ2pjFR35xMuma2Jiu53eOEeY9NDj4EGu9Ep0"
+        },
+        "appName": "Google Docs",
+        "actionId": "appendText",
+        "subLabel": "Appends text to an existing document.",
+        "actionName": "Append Text",
+        "description": "Appends text to an existing document.",
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "k6orbgmyu",
+      "type": "parallel",
+      "data": {
+        "icon": "logic",
+        "name": "Logic_parallel",
+        "label": "Logic_parallel",
+        "piece": "logic",
+        "action": "parallel",
+        "appName": "Logic",
+        "actionId": "parallel",
+        "branches": [
+          "Branch 1",
+          "Branch 2"
+        ],
+        "subLabel": "Execute multiple branches in parallel.",
+        "actionName": "Parallel",
+        "description": "Execute multiple branches in parallel.",
+        "isMergeNode": false,
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "cd6zqns69",
+      "type": "custom",
+      "data": {
+        "icon": "docs",
+        "name": "Google Docs_appendText",
+        "label": "Google Docs_appendText",
+        "piece": "docs",
+        "action": "appendText",
+        "params": {
+          "text": "parallel 1 ",
+          "connection": "f495d7db-7c61-4d0d-859a-fd7658780eae",
+          "documentId": "19Vv_26AJ2pjFR35xMuma2Jiu53eOEeY9NDj4EGu9Ep0"
+        },
+        "appName": "Google Docs",
+        "actionId": "appendText",
+        "subLabel": "Appends text to an existing document.",
+        "actionName": "Append Text",
+        "description": "Appends text to an existing document.",
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "izd7hp7yd",
+      "type": "custom",
+      "data": {
+        "icon": "docs",
+        "name": "Google Docs_appendText",
+        "label": "Google Docs_appendText",
+        "piece": "docs",
+        "action": "appendText",
+        "params": {
+          "text": "parallel 2",
+          "connection": "f495d7db-7c61-4d0d-859a-fd7658780eae",
+          "documentId": "19Vv_26AJ2pjFR35xMuma2Jiu53eOEeY9NDj4EGu9Ep0"
+        },
+        "appName": "Google Docs",
+        "actionId": "appendText",
+        "subLabel": "Appends text to an existing document.",
+        "actionName": "Append Text",
+        "description": "Appends text to an existing document.",
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "5ox44187c",
+      "type": "custom",
+      "data": {
+        "icon": "docs",
+        "name": "Google Docs_appendText",
+        "label": "Google Docs_appendText",
+        "piece": "docs",
+        "action": "appendText",
+        "params": {
+          "text": "parallel finished",
+          "connection": "f495d7db-7c61-4d0d-859a-fd7658780eae",
+          "documentId": "19Vv_26AJ2pjFR35xMuma2Jiu53eOEeY9NDj4EGu9Ep0"
+        },
+        "appName": "Google Docs",
+        "actionId": "appendText",
+        "subLabel": "Appends text to an existing document.",
+        "actionName": "Append Text",
+        "description": "Appends text to an existing document.",
+        "isPlaceholder": false
+      }
+    }
+  ],
+  "mapped": {
+    "trigger": {
+      "piece": "schedule",
+      "name": "schedule",
+      "displayName": "Schedule schedule",
+      "nodeId": "1",
+      "params": {
+        "intervalType": "minutes",
+        "intervalMinutes": "1"
+      }
+    },
+    "steps": [
+      {
+        "name": "2o0e63940",
+        "type": "parallel",
+        "branches": [
+          [
+            {
+              "name": "tbb4hyqj1",
+              "type": "condition",
+              "condition": "true",
+              "onTrue": [
+                {
+                  "name": "9tr4frst7",
+                  "type": "action",
+                  "displayName": "Google Docs appendText",
+                  "piece": "docs",
+                  "action": "appendText",
+                  "params": {
+                    "text": "logic true 1",
+                    "connection": "f495d7db-7c61-4d0d-859a-fd7658780eae",
+                    "documentId": "19Vv_26AJ2pjFR35xMuma2Jiu53eOEeY9NDj4EGu9Ep0"
+                  }
+                }
+              ],
+              "onFalse": [
+                {
+                  "name": "jgaf9a9tm",
+                  "type": "action",
+                  "displayName": "Google Docs appendText",
+                  "piece": "docs",
+                  "action": "appendText",
+                  "params": {
+                    "text": "logic false",
+                    "connection": "f495d7db-7c61-4d0d-859a-fd7658780eae",
+                    "documentId": "19Vv_26AJ2pjFR35xMuma2Jiu53eOEeY9NDj4EGu9Ep0"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "gvvxwqsyw",
+              "type": "action",
+              "displayName": "Google Docs appendText",
+              "piece": "docs",
+              "action": "appendText",
+              "params": {
+                "text": "logic finished",
+                "connection": "f495d7db-7c61-4d0d-859a-fd7658780eae",
+                "documentId": "19Vv_26AJ2pjFR35xMuma2Jiu53eOEeY9NDj4EGu9Ep0"
+              }
+            }
+          ],
+          [
+            {
+              "name": "k6orbgmyu",
+              "type": "parallel",
+              "branches": [
+                [
+                  {
+                    "name": "cd6zqns69",
+                    "type": "action",
+                    "displayName": "Google Docs appendText",
+                    "piece": "docs",
+                    "action": "appendText",
+                    "params": {
+                      "text": "parallel 1 ",
+                      "connection": "f495d7db-7c61-4d0d-859a-fd7658780eae",
+                      "documentId": "19Vv_26AJ2pjFR35xMuma2Jiu53eOEeY9NDj4EGu9Ep0"
+                    }
+                  }
+                ],
+                [
+                  {
+                    "name": "izd7hp7yd",
+                    "type": "action",
+                    "displayName": "Google Docs appendText",
+                    "piece": "docs",
+                    "action": "appendText",
+                    "params": {
+                      "text": "parallel 2",
+                      "connection": "f495d7db-7c61-4d0d-859a-fd7658780eae",
+                      "documentId": "19Vv_26AJ2pjFR35xMuma2Jiu53eOEeY9NDj4EGu9Ep0"
+                    }
+                  }
+                ]
+              ]
+            },
+            {
+              "name": "5ox44187c",
+              "type": "action",
+              "displayName": "Google Docs appendText",
+              "piece": "docs",
+              "action": "appendText",
+              "params": {
+                "text": "parallel finished",
+                "connection": "f495d7db-7c61-4d0d-859a-fd7658780eae",
+                "documentId": "19Vv_26AJ2pjFR35xMuma2Jiu53eOEeY9NDj4EGu9Ep0"
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "name": "m5lg65k3j",
+        "type": "action",
+        "displayName": "Gmail sendEmail",
+        "piece": "gmail",
+        "action": "sendEmail",
+        "params": {
+          "to": "thanveer21cs52@gmail.com",
+          "body": "hi everything finished",
+          "subject": "all finished",
+          "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+        }
+      }
+    ]
+  }
+}

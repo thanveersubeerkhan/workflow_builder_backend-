@@ -72,16 +72,20 @@ export async function executeFlow({ runId: initialRunId, flowId, userId, definit
   }
 
   // 1.5. Safety Check: Is flow still active? (Crucial for immediate stop)
-  const flowCheck = await pool.query('SELECT is_active FROM flows WHERE id = $1', [flowId]);
-  if (!flowCheck.rows[0]?.is_active) {
-    console.log(`[Executor] 🛑 Aborting: Flow ${flowId} is no longer active.`);
-    const abortLogs = ["[Executor] 🛑 Execution aborted: Flow is deactivated."];
-    await pool.query(
-        'UPDATE flow_runs SET status = $1, logs = $2 WHERE id = $3',
-        ['failed', JSON.stringify(abortLogs), runId]
-    );
-    if (onEvent) onEvent('flow-failed', { flowId, runId, error: 'Flow deactivated' });
-    return;
+  // 1.5. Safety Check: Is flow still active? (Crucial for immediate stop)
+  // Bypass check if it's a manual test run
+  if (!triggerData?.manual) {
+      const flowCheck = await pool.query('SELECT is_active FROM flows WHERE id = $1', [flowId]);
+      if (!flowCheck.rows[0]?.is_active) {
+        console.log(`[Executor] 🛑 Aborting: Flow ${flowId} is no longer active.`);
+        const abortLogs = ["[Executor] 🛑 Execution aborted: Flow is deactivated."];
+        await pool.query(
+            'UPDATE flow_runs SET status = $1, logs = $2 WHERE id = $3',
+            ['failed', JSON.stringify(abortLogs), runId]
+        );
+        if (onEvent) onEvent('flow-failed', { flowId, runId, error: 'Flow deactivated' });
+        return;
+      }
   }
 
   // --- Synchronized Persistence Helper ---
