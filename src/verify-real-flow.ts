@@ -1,5 +1,5 @@
-import { pool } from './db';
-import { mapUIToDefinition } from './flow-mapper';
+import { pool } from './db.js';
+import { mapUIToDefinition } from './flow-mapper.js';
 
 import axios from 'axios';
 
@@ -39,7 +39,7 @@ async function verify() {
   // Trigger Run
   try {
       console.log('Triggering Flow Execution...');
-      const res = await axios.post(`http://127.0.0.1:3000/api/flows/${FLOW_ID}/run`, {});
+      const res = await axios.post(`http://127.0.0.1:3000/api/flows/${FLOW_ID}/run`, { manual: true });
       console.log('Run Response:', JSON.stringify(res.data, null, 2));
   } catch (err: any) {
       console.error('Run Failed:', err.response?.data || err.message);

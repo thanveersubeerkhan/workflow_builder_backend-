@@ -72,6 +72,7 @@
         "subLabel": "Sends a new email.",
         "actionName": "Send Email",
         "description": "Sends a new email.",
+        "isMergeNode": true,
         "isPlaceholder": false
       }
     },
@@ -115,6 +116,7 @@
         "subLabel": "Appends text to an existing document.",
         "actionName": "Append Text",
         "description": "Appends text to an existing document.",
+        "isMergeNode": false,
         "isPlaceholder": false
       }
     },
@@ -137,6 +139,7 @@
         "subLabel": "Appends text to an existing document.",
         "actionName": "Append Text",
         "description": "Appends text to an existing document.",
+        "isMergeNode": false,
         "isPlaceholder": false
       }
     },
@@ -159,6 +162,7 @@
         "subLabel": "Appends text to an existing document.",
         "actionName": "Append Text",
         "description": "Appends text to an existing document.",
+        "isMergeNode": true,
         "isPlaceholder": false
       }
     },
@@ -171,6 +175,14 @@
         "label": "Logic_parallel",
         "piece": "logic",
         "action": "parallel",
+        "params": {
+          "branches": [
+            "Branch 1",
+            "Branch 2",
+            "Branch 3",
+            "Branch 4"
+          ]
+        },
         "appName": "Logic",
         "actionId": "parallel",
         "branches": [
@@ -203,6 +215,7 @@
         "subLabel": "Appends text to an existing document.",
         "actionName": "Append Text",
         "description": "Appends text to an existing document.",
+        "isMergeNode": false,
         "isPlaceholder": false
       }
     },
@@ -225,6 +238,7 @@
         "subLabel": "Appends text to an existing document.",
         "actionName": "Append Text",
         "description": "Appends text to an existing document.",
+        "isMergeNode": false,
         "isPlaceholder": false
       }
     },
@@ -247,7 +261,333 @@
         "subLabel": "Appends text to an existing document.",
         "actionName": "Append Text",
         "description": "Appends text to an existing document.",
+        "isMergeNode": true,
         "isPlaceholder": false
+      }
+    },
+    {
+      "id": "v46sg81ak",
+      "type": "custom",
+      "data": {
+        "icon": "gmail",
+        "name": "Gmail_sendEmail",
+        "label": "Gmail_sendEmail",
+        "piece": "gmail",
+        "action": "sendEmail",
+        "params": {
+          "to": "thanveer21cs52@gmail.com",
+          "body": "branch 3",
+          "subject": "branch 3",
+          "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+        },
+        "appName": "Gmail",
+        "actionId": "sendEmail",
+        "subLabel": "Sends a new email.",
+        "actionName": "Send Email",
+        "description": "Sends a new email.",
+        "isMergeNode": false,
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "4pvv3c7up",
+      "type": "custom",
+      "data": {
+        "icon": "gmail",
+        "name": "Gmail_sendEmail",
+        "label": "Gmail_sendEmail",
+        "piece": "gmail",
+        "action": "sendEmail",
+        "params": {
+          "to": "thanveer21cs52@gmail.com",
+          "body": "branch 4",
+          "subject": "branch 4",
+          "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+        },
+        "appName": "Gmail",
+        "actionId": "sendEmail",
+        "subLabel": "Sends a new email.",
+        "actionName": "Send Email",
+        "description": "Sends a new email.",
+        "isMergeNode": false,
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "7pl94b1j9",
+      "type": "parallel",
+      "data": {
+        "icon": "logic",
+        "name": "Logic_parallel",
+        "label": "Logic_parallel",
+        "piece": "logic",
+        "action": "parallel",
+        "appName": "Logic",
+        "actionId": "parallel",
+        "branches": [
+          "Branch 1",
+          "Branch 2"
+        ],
+        "subLabel": "Execute multiple branches in parallel.",
+        "actionName": "Parallel",
+        "description": "Execute multiple branches in parallel.",
+        "isMergeNode": false,
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "ogb8hh6bz",
+      "type": "custom",
+      "data": {
+        "icon": "gmail",
+        "name": "Gmail_sendEmail",
+        "label": "Gmail_sendEmail",
+        "piece": "gmail",
+        "action": "sendEmail",
+        "params": {
+          "to": "thanveer21cs52@gmail.com",
+          "body": "parallel1logicfalseparallel1",
+          "subject": "parallel1logicfalseparallel1",
+          "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+        },
+        "appName": "Gmail",
+        "actionId": "sendEmail",
+        "subLabel": "Sends a new email.",
+        "actionName": "Send Email",
+        "description": "Sends a new email.",
+        "isMergeNode": false,
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "beo6h4oyq",
+      "type": "custom",
+      "data": {
+        "icon": "gmail",
+        "name": "Gmail_sendEmail",
+        "label": "Gmail_sendEmail",
+        "piece": "gmail",
+        "action": "sendEmail",
+        "params": {
+          "to": "thanveer21cs52@gmail.com",
+          "body": "parallel12ogicfalseparallel2",
+          "subject": "parallel1logicfalseparallel2",
+          "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+        },
+        "appName": "Gmail",
+        "actionId": "sendEmail",
+        "subLabel": "Sends a new email.",
+        "actionName": "Send Email",
+        "description": "Sends a new email.",
+        "isMergeNode": false,
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "2hio227ky",
+      "type": "custom",
+      "data": {
+        "label": "Add Step",
+        "subLabel": "Merge",
+        "isMergeNode": true,
+        "isPlaceholder": true,
+        "isMergePlaceholder": true
+      }
+    },
+    {
+      "id": "5ik2lx6de",
+      "type": "condition",
+      "data": {
+        "icon": "logic",
+        "name": "Logic_condition",
+        "label": "Logic_condition",
+        "piece": "logic",
+        "action": "condition",
+        "appName": "Logic",
+        "actionId": "condition",
+        "subLabel": "Branch the flow based on a condition.",
+        "actionName": "Condition",
+        "description": "Branch the flow based on a condition.",
+        "isMergeNode": false,
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "vnmfqk7kp",
+      "type": "custom",
+      "data": {
+        "icon": "gmail",
+        "name": "Gmail_sendEmail",
+        "label": "Gmail_sendEmail",
+        "piece": "gmail",
+        "action": "sendEmail",
+        "params": {
+          "to": "thanveer21cs52@gmail.com",
+          "body": "parallel1logictruelogictrue",
+          "subject": "parallel1logictruelogictrue",
+          "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+        },
+        "appName": "Gmail",
+        "actionId": "sendEmail",
+        "subLabel": "Sends a new email.",
+        "actionName": "Send Email",
+        "description": "Sends a new email.",
+        "isMergeNode": false,
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "gmhnyv4le",
+      "type": "custom",
+      "data": {
+        "icon": "gmail",
+        "name": "Gmail_sendEmail",
+        "label": "Gmail_sendEmail",
+        "piece": "gmail",
+        "action": "sendEmail",
+        "params": {
+          "to": "thanveer21cs52@gmail.com",
+          "body": "parallel1logictruelogicfalse",
+          "subject": "parallel1logictruelogicfalse",
+          "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+        },
+        "appName": "Gmail",
+        "actionId": "sendEmail",
+        "subLabel": "Sends a new email.",
+        "actionName": "Send Email",
+        "description": "Sends a new email.",
+        "isMergeNode": false,
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "qbborkeu3",
+      "type": "custom",
+      "data": {
+        "label": "Add Step",
+        "subLabel": "Merge",
+        "isMergeNode": true,
+        "isPlaceholder": true,
+        "isMergePlaceholder": true
+      }
+    },
+    {
+      "id": "hial99wsq",
+      "type": "condition",
+      "data": {
+        "icon": "logic",
+        "name": "Logic_condition",
+        "label": "Logic_condition",
+        "piece": "logic",
+        "action": "condition",
+        "appName": "Logic",
+        "actionId": "condition",
+        "subLabel": "Branch the flow based on a condition.",
+        "actionName": "Condition",
+        "description": "Branch the flow based on a condition.",
+        "isMergeNode": false,
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "qrjn30mp8",
+      "type": "custom",
+      "data": {
+        "label": "Add Step",
+        "subLabel": "False Path",
+        "isMergeNode": false,
+        "isPlaceholder": true,
+        "isBranchPlaceholder": true
+      }
+    },
+    {
+      "id": "ievsiimkv",
+      "type": "custom",
+      "data": {
+        "label": "Add Step",
+        "subLabel": "Merge",
+        "isMergeNode": true,
+        "isPlaceholder": true,
+        "isMergePlaceholder": true
+      }
+    },
+    {
+      "id": "94ezjwbh0",
+      "type": "parallel",
+      "data": {
+        "icon": "logic",
+        "name": "Logic_parallel",
+        "label": "Logic_parallel",
+        "piece": "logic",
+        "action": "parallel",
+        "appName": "Logic",
+        "actionId": "parallel",
+        "branches": [
+          "Branch 1",
+          "Branch 2"
+        ],
+        "subLabel": "Execute multiple branches in parallel.",
+        "actionName": "Parallel",
+        "description": "Execute multiple branches in parallel.",
+        "isMergeNode": false,
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "jbe7ww1bv",
+      "type": "custom",
+      "data": {
+        "icon": "gmail",
+        "name": "Gmail_sendEmail",
+        "label": "Gmail_sendEmail",
+        "piece": "gmail",
+        "action": "sendEmail",
+        "params": {
+          "to": "thanveer21cs52@gmail.com",
+          "body": "prallel2branch3logictrueparallel1",
+          "subject": "prallel2branch3logictrueparallel1",
+          "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+        },
+        "appName": "Gmail",
+        "actionId": "sendEmail",
+        "subLabel": "Sends a new email.",
+        "actionName": "Send Email",
+        "description": "Sends a new email.",
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "d2ij03odk",
+      "type": "custom",
+      "data": {
+        "icon": "gmail",
+        "name": "Gmail_sendEmail",
+        "label": "Gmail_sendEmail",
+        "piece": "gmail",
+        "action": "sendEmail",
+        "params": {
+          "to": "thanveer21cs52@gmail.com",
+          "body": "prallel2branch3logictrueparallel2",
+          "subject": "prallel2branch3logictrueparallel2",
+          "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+        },
+        "appName": "Gmail",
+        "actionId": "sendEmail",
+        "subLabel": "Sends a new email.",
+        "actionName": "Send Email",
+        "description": "Sends a new email.",
+        "isPlaceholder": false
+      }
+    },
+    {
+      "id": "w8w653yh0",
+      "type": "custom",
+      "data": {
+        "label": "Add Step",
+        "subLabel": "Merge",
+        "isMergeNode": true,
+        "isPlaceholder": true,
+        "isMergePlaceholder": true
       }
     }
   ],
@@ -284,6 +624,41 @@
                     "connection": "f495d7db-7c61-4d0d-859a-fd7658780eae",
                     "documentId": "19Vv_26AJ2pjFR35xMuma2Jiu53eOEeY9NDj4EGu9Ep0"
                   }
+                },
+                {
+                  "name": "5ik2lx6de",
+                  "type": "condition",
+                  "condition": "false",
+                  "onTrue": [
+                    {
+                      "name": "vnmfqk7kp",
+                      "type": "action",
+                      "displayName": "Gmail sendEmail",
+                      "piece": "gmail",
+                      "action": "sendEmail",
+                      "params": {
+                        "to": "thanveer21cs52@gmail.com",
+                        "body": "parallel1logictruelogictrue",
+                        "subject": "parallel1logictruelogictrue",
+                        "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+                      }
+                    }
+                  ],
+                  "onFalse": [
+                    {
+                      "name": "gmhnyv4le",
+                      "type": "action",
+                      "displayName": "Gmail sendEmail",
+                      "piece": "gmail",
+                      "action": "sendEmail",
+                      "params": {
+                        "to": "thanveer21cs52@gmail.com",
+                        "body": "parallel1logictruelogicfalse",
+                        "subject": "parallel1logictruelogicfalse",
+                        "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+                      }
+                    }
+                  ]
                 }
               ],
               "onFalse": [
@@ -298,6 +673,42 @@
                     "connection": "f495d7db-7c61-4d0d-859a-fd7658780eae",
                     "documentId": "19Vv_26AJ2pjFR35xMuma2Jiu53eOEeY9NDj4EGu9Ep0"
                   }
+                },
+                {
+                  "name": "7pl94b1j9",
+                  "type": "parallel",
+                  "branches": [
+                    [
+                      {
+                        "name": "ogb8hh6bz",
+                        "type": "action",
+                        "displayName": "Gmail sendEmail",
+                        "piece": "gmail",
+                        "action": "sendEmail",
+                        "params": {
+                          "to": "thanveer21cs52@gmail.com",
+                          "body": "parallel1logicfalseparallel1",
+                          "subject": "parallel1logicfalseparallel1",
+                          "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "name": "beo6h4oyq",
+                        "type": "action",
+                        "displayName": "Gmail sendEmail",
+                        "piece": "gmail",
+                        "action": "sendEmail",
+                        "params": {
+                          "to": "thanveer21cs52@gmail.com",
+                          "body": "parallel12ogicfalseparallel2",
+                          "subject": "parallel1logicfalseparallel2",
+                          "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+                        }
+                      }
+                    ]
+                  ]
                 }
               ]
             },
@@ -344,6 +755,80 @@
                       "text": "parallel 2",
                       "connection": "f495d7db-7c61-4d0d-859a-fd7658780eae",
                       "documentId": "19Vv_26AJ2pjFR35xMuma2Jiu53eOEeY9NDj4EGu9Ep0"
+                    }
+                  }
+                ],
+                [
+                  {
+                    "name": "v46sg81ak",
+                    "type": "action",
+                    "displayName": "Gmail sendEmail",
+                    "piece": "gmail",
+                    "action": "sendEmail",
+                    "params": {
+                      "to": "thanveer21cs52@gmail.com",
+                      "body": "branch 3",
+                      "subject": "branch 3",
+                      "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+                    }
+                  },
+                  {
+                    "name": "hial99wsq",
+                    "type": "condition",
+                    "condition": "false",
+                    "onTrue": [
+                      {
+                        "name": "94ezjwbh0",
+                        "type": "parallel",
+                        "branches": [
+                          [
+                            {
+                              "name": "jbe7ww1bv",
+                              "type": "action",
+                              "displayName": "Gmail sendEmail",
+                              "piece": "gmail",
+                              "action": "sendEmail",
+                              "params": {
+                                "to": "thanveer21cs52@gmail.com",
+                                "body": "prallel2branch3logictrueparallel1",
+                                "subject": "prallel2branch3logictrueparallel1",
+                                "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "name": "d2ij03odk",
+                              "type": "action",
+                              "displayName": "Gmail sendEmail",
+                              "piece": "gmail",
+                              "action": "sendEmail",
+                              "params": {
+                                "to": "thanveer21cs52@gmail.com",
+                                "body": "prallel2branch3logictrueparallel2",
+                                "subject": "prallel2branch3logictrueparallel2",
+                                "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
+                              }
+                            }
+                          ]
+                        ]
+                      }
+                    ],
+                    "onFalse": []
+                  }
+                ],
+                [
+                  {
+                    "name": "4pvv3c7up",
+                    "type": "action",
+                    "displayName": "Gmail sendEmail",
+                    "piece": "gmail",
+                    "action": "sendEmail",
+                    "params": {
+                      "to": "thanveer21cs52@gmail.com",
+                      "body": "branch 4",
+                      "subject": "branch 4",
+                      "connection": "8086afba-a79a-46f9-b421-f0b0365ba50c"
                     }
                   }
                 ]

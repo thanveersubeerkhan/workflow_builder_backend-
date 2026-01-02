@@ -194,6 +194,13 @@ export function mapUIToDefinition(ui: UIDefinition) {
             continue;
         }
 
+
+        // 4.5. Skip Placeholders
+        if (node.data?.isPlaceholder) {
+            currentId = outbound.length > 0 ? outbound[0].node.id : undefined;
+            continue;
+        }
+
         // 5. Linear Action
         const stepPiece = mapPieceName(node.data?.icon || node.data?.appName);
         steps.push({
